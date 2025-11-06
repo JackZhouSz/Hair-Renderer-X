@@ -753,6 +753,11 @@ void ObjectExplorerWidget::render() {
                 {
                     mat->setClampBSDFValue(clamB);
                 }
+                bool shadowsAdv = mat->get_adv_shadows();
+                if (ImGui::Checkbox("Adv. Shadows", &shadowsAdv))
+                {
+                    mat->set_adv_shadows(shadowsAdv);
+                }
             }
             if (model->get_material(i)->get_type() == IMaterial::Type::HAIR_STR_TYPE)
             {

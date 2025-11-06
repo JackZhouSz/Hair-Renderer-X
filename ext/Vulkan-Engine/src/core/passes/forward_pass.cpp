@@ -94,12 +94,11 @@ void ForwardPass::setup_uniforms(std::vector<Graphics::Frame>& frames) {
     LayoutBinding accelBinding(UNIFORM_ACCELERATION_STRUCTURE, SHADER_STAGE_FRAGMENT, 5);
     LayoutBinding noiseBinding(UNIFORM_COMBINED_IMAGE_SAMPLER, SHADER_STAGE_FRAGMENT, 6);
     LayoutBinding DpBinding(UNIFORM_COMBINED_IMAGE_SAMPLER, SHADER_STAGE_FRAGMENT, 7);
-    LayoutBinding hairFrontAttBinding(UNIFORM_COMBINED_IMAGE_SAMPLER, SHADER_STAGE_FRAGMENT, 8);
-    LayoutBinding hairBackAttBinding(UNIFORM_COMBINED_IMAGE_SAMPLER, SHADER_STAGE_FRAGMENT, 9);
-    LayoutBinding hairVoxels(UNIFORM_COMBINED_IMAGE_SAMPLER, SHADER_STAGE_FRAGMENT, 10);
-    LayoutBinding hairng(UNIFORM_COMBINED_IMAGE_SAMPLER, SHADER_STAGE_FRAGMENT, 11);
-    LayoutBinding hairngt(UNIFORM_COMBINED_IMAGE_SAMPLER, SHADER_STAGE_FRAGMENT, 12);
-    LayoutBinding hairGI(UNIFORM_COMBINED_IMAGE_SAMPLER, SHADER_STAGE_FRAGMENT, 13);
+    LayoutBinding hairVoxels(UNIFORM_COMBINED_IMAGE_SAMPLER, SHADER_STAGE_FRAGMENT, 9);
+    LayoutBinding hairng(UNIFORM_COMBINED_IMAGE_SAMPLER, SHADER_STAGE_FRAGMENT, 10);
+    LayoutBinding hairngt(UNIFORM_COMBINED_IMAGE_SAMPLER, SHADER_STAGE_FRAGMENT, 11);
+    LayoutBinding hairGI(UNIFORM_COMBINED_IMAGE_SAMPLER, SHADER_STAGE_FRAGMENT, 12);
+    LayoutBinding hairVoxelsDensity(UNIFORM_COMBINED_IMAGE_SAMPLER, SHADER_STAGE_FRAGMENT, 13);
     m_descriptorPool.set_layout(GLOBAL_LAYOUT,
                                 {camBufferBinding,
                                  sceneBufferBinding,
@@ -109,12 +108,11 @@ void ForwardPass::setup_uniforms(std::vector<Graphics::Frame>& frames) {
                                  accelBinding,
                                  noiseBinding,
                                  DpBinding,
-                                 hairFrontAttBinding,
-                                 hairBackAttBinding,
                                  hairVoxels,
                                  hairng,
                                  hairngt,
-                                 hairGI});
+                                 hairGI,
+                                 hairVoxelsDensity});
 
     // PER-OBJECT SET
     LayoutBinding objectBufferBinding(UNIFORM_DYNAMIC_BUFFER, SHADER_STAGE_VERTEX | SHADER_STAGE_GEOMETRY | SHADER_STAGE_FRAGMENT, 0);
@@ -152,14 +150,14 @@ void ForwardPass::setup_uniforms(std::vector<Graphics::Frame>& frames) {
             get_image(ResourceManager::BLUE_NOISE_TEXTURE), LAYOUT_SHADER_READ_ONLY_OPTIMAL, &m_descriptors[i].globalDescritor, 6);
         m_descriptorPool.set_descriptor_write(
             get_image(ResourceManager::HAIR_FAR_FIELD_DIST), LAYOUT_SHADER_READ_ONLY_OPTIMAL, &m_descriptors[i].globalDescritor, 7);
-        m_descriptorPool.set_descriptor_write(&ResourceManager::HAIR_FRONT_ATT, LAYOUT_SHADER_READ_ONLY_OPTIMAL, &m_descriptors[i].globalDescritor, 8);
-        m_descriptorPool.set_descriptor_write(&ResourceManager::HAIR_BACK_ATT, LAYOUT_SHADER_READ_ONLY_OPTIMAL, &m_descriptors[i].globalDescritor, 9);
         m_descriptorPool.set_descriptor_write(
-            &ResourceManager::HAIR_PERECEIVED_DENSITY_VOLUME, LAYOUT_SHADER_READ_ONLY_OPTIMAL, &m_descriptors[i].globalDescritor, 10);
-        m_descriptorPool.set_descriptor_write(&ResourceManager::HAIR_NG, LAYOUT_SHADER_READ_ONLY_OPTIMAL, &m_descriptors[i].globalDescritor, 11);
-        m_descriptorPool.set_descriptor_write(&ResourceManager::HAIR_NG_TRT, LAYOUT_SHADER_READ_ONLY_OPTIMAL, &m_descriptors[i].globalDescritor, 12);
-        m_descriptorPool.set_descriptor_write(&ResourceManager::HAIR_GI, LAYOUT_SHADER_READ_ONLY_OPTIMAL, &m_descriptors[i].globalDescritor, 13);
-        // m_descriptorPool.set_descriptor_write( get_image(ResourceManager::HAIR_GI_FALLBACK), LAYOUT_SHADER_READ_ONLY_OPTIMAL, &m_descriptors[i].globalDescritor, 13);
+            &ResourceManager::HAIR_PERECEIVED_DENSITY_VOLUME, LAYOUT_SHADER_READ_ONLY_OPTIMAL, &m_descriptors[i].globalDescritor, 9);
+        m_descriptorPool.set_descriptor_write(&ResourceManager::HAIR_NG, LAYOUT_SHADER_READ_ONLY_OPTIMAL, &m_descriptors[i].globalDescritor, 10);
+        m_descriptorPool.set_descriptor_write(&ResourceManager::HAIR_NG_TRT, LAYOUT_SHADER_READ_ONLY_OPTIMAL, &m_descriptors[i].globalDescritor, 11);
+        m_descriptorPool.set_descriptor_write(&ResourceManager::HAIR_GI, LAYOUT_SHADER_READ_ONLY_OPTIMAL, &m_descriptors[i].globalDescritor, 12);
+        m_descriptorPool.set_descriptor_write(&ResourceManager::HAIR_VOXEL_VOLUME_2, LAYOUT_SHADER_READ_ONLY_OPTIMAL, &m_descriptors[i].globalDescritor, 13);
+        // m_descriptorPool.set_descriptor_write( get_image(ResourceManager::HAIR_GI_FALLBACK), LAYOUT_SHADER_READ_ONLY_OPTIMAL,
+        // &m_descriptors[i].globalDescritor, 13);
 
         // Per-object
         m_descriptorPool.allocate_descriptor_set(OBJECT_LAYOUT, &m_descriptors[i].objectDescritor);
@@ -237,12 +235,12 @@ void ForwardPass::setup_shader_passes() {
     hairStrandPass2->settings.descriptorSetLayoutIDs = {{GLOBAL_LAYOUT, true}, {OBJECT_LAYOUT, true}, {OBJECT_TEXTURE_LAYOUT, true}};
     hairStrandPass2->graphicSettings.attributes      = {
         {POSITION_ATTRIBUTE, true}, {NORMAL_ATTRIBUTE, false}, {UV_ATTRIBUTE, false}, {TANGENT_ATTRIBUTE, true}, {COLOR_ATTRIBUTE, true}};
-    hairStrandPass2->graphicSettings.dynamicStates    = dynamicStates;
-    hairStrandPass2->graphicSettings.samples          = samples;
-    hairStrandPass2->graphicSettings.sampleShading    = false;
-    hairStrandPass2->graphicSettings.blendAttachments = blendAttachments;
-    hairStrandPass2->graphicSettings.topology         = VK_PRIMITIVE_TOPOLOGY_LINE_LIST;
-    m_shaderPasses[IMaterial::Type::HAIR_STR_EPIC_TYPE]    = hairStrandPass2;
+    hairStrandPass2->graphicSettings.dynamicStates      = dynamicStates;
+    hairStrandPass2->graphicSettings.samples            = samples;
+    hairStrandPass2->graphicSettings.sampleShading      = false;
+    hairStrandPass2->graphicSettings.blendAttachments   = blendAttachments;
+    hairStrandPass2->graphicSettings.topology           = VK_PRIMITIVE_TOPOLOGY_LINE_LIST;
+    m_shaderPasses[IMaterial::Type::HAIR_STR_EPIC_TYPE] = hairStrandPass2;
 
     GraphicShaderPass* hairStrandPassDisney =
         new GraphicShaderPass(m_device->get_handle(), m_renderpass, m_imageExtent, ENGINE_RESOURCES_PATH "shaders/forward/hair_strand_disney.glsl");
@@ -254,7 +252,7 @@ void ForwardPass::setup_shader_passes() {
     hairStrandPassDisney->graphicSettings.sampleShading    = false;
     hairStrandPassDisney->graphicSettings.blendAttachments = blendAttachments;
     hairStrandPassDisney->graphicSettings.topology         = VK_PRIMITIVE_TOPOLOGY_LINE_LIST;
-    m_shaderPasses[IMaterial::Type::HAIR_STR_DISNEY_TYPE]    = hairStrandPassDisney;
+    m_shaderPasses[IMaterial::Type::HAIR_STR_DISNEY_TYPE]  = hairStrandPassDisney;
 
     GraphicShaderPass* skyboxPass =
         new GraphicShaderPass(m_device->get_handle(), m_renderpass, m_imageExtent, ENGINE_RESOURCES_PATH "shaders/forward/skybox.glsl");

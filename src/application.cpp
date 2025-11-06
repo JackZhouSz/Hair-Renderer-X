@@ -14,7 +14,8 @@ void HairViewer::init(Systems::RendererSettings settings) {
     m_window->set_key_callback(
         std::bind(&HairViewer::keyboard_callback, this, std::placeholders::_1, std::placeholders::_2, std::placeholders::_3, std::placeholders::_4));
 
-    m_renderer = new Systems::ForwardRenderer(m_window, ShadowResolution::HIGH, settings);
+    settings.clearColor = Vec4(0.0, 0.0, 0.0, 1.0);
+    m_renderer          = new Systems::ForwardRenderer(m_window, ShadowResolution::HIGH, settings);
 
     setup();
 

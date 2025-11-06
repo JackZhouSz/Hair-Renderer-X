@@ -2,14 +2,14 @@
 #version 460 core
 #include object.glsl
 
-//Input
+// Input
 layout(location = 0) in vec3 position;
 layout(location = 1) in vec3 normal;
 layout(location = 2) in vec3 uv;
 layout(location = 3) in vec3 tangent;
 layout(location = 4) in vec3 color;
 
-//Output
+// Output
 layout(location = 0) out vec3 v_color;
 layout(location = 1) out vec3 v_tangent;
 
@@ -18,29 +18,29 @@ void main() {
     gl_Position = object.model * vec4(position, 1.0);
 
     v_tangent = normalize(mat3(transpose(inverse(object.model))) * tangent);
-    v_color = color;
-
+    v_color   = color;
 }
 
 #shader geometry
 #version 460 core
 #include camera.glsl
 
-//Setup
+// Setup
 layout(lines) in;
 layout(triangle_strip, max_vertices = 4) out;
 
-//Input
+// Input
 layout(location = 0) in vec3 v_color[];
 layout(location = 1) in vec3 v_tangent[];
 
-//Uniforms
+// Uniforms
 layout(set = 1, binding = 1) uniform MaterialUniforms {
-    vec3 baseColor;
+    vec3  baseColor;
     float thickness;
-} material;
+}
+material;
 
-//Output
+// Output
 layout(location = 0) out vec3 g_pos;
 layout(location = 1) out vec3 g_modelPos;
 layout(location = 2) out vec3 g_normal;
@@ -51,37 +51,29 @@ layout(location = 6) out vec3 g_modelDir;
 layout(location = 7) out vec3 g_color;
 layout(location = 8) out vec3 g_origin;
 
-void emitQuadPoint(
-    vec4 origin,
-    vec4 right,
-    float offset,
-    vec3 forward,
-    vec3 normal,
-    vec2 uv,
-    int id
-) {
+void emitQuadPoint(vec4 origin, vec4 right, float offset, vec3 forward, vec3 normal, vec2 uv, int id) {
 
-    vec4 newPos = origin + right * offset; //Model space
-    gl_Position = camera.viewProj * newPos;
-    g_dir = normalize(mat3(transpose(inverse(camera.view))) * v_tangent[id]);
-    g_modelDir = v_tangent[id];
-    g_color = v_color[id];
-    g_pos = (camera.view * newPos).xyz;
-    g_modelPos = newPos.xyz;
-    g_uv = uv;
-    g_normal = normalize(mat3(transpose(inverse(camera.view))) * normal);
+    vec4 newPos   = origin + right * offset; // Model space
+    gl_Position   = camera.viewProj * newPos;
+    g_dir         = normalize(mat3(transpose(inverse(camera.view))) * v_tangent[id]);
+    g_modelDir    = v_tangent[id];
+    g_color       = v_color[id];
+    g_pos         = (camera.view * newPos).xyz;
+    g_modelPos    = newPos.xyz;
+    g_uv          = uv;
+    g_normal      = normalize(mat3(transpose(inverse(camera.view))) * normal);
     g_modelNormal = normal;
-    g_origin = (camera.view * origin).xyz;
+    g_origin      = (camera.view * origin).xyz;
 
     EmitVertex();
 }
 
 void main() {
 
-        //Model space --->>>
+    // Model space --->>>
 
     vec4 startPoint = gl_in[0].gl_Position;
-    vec4 endPoint = gl_in[1].gl_Position;
+    vec4 endPoint   = gl_in[1].gl_Position;
 
     vec4 view0 = vec4(camera.position.xyz, 1.0) - startPoint;
     vec4 view1 = vec4(camera.position.xyz, 1.0) - endPoint;
@@ -95,7 +87,7 @@ void main() {
     vec3 normal0 = normalize(cross(right0.xyz, dir0.xyz));
     vec3 normal1 = normalize(cross(right1.xyz, dir1.xyz));
 
-        //<<<----
+    //<<<----
 
     float halfLength = material.thickness * 0.5;
 
@@ -103,7 +95,6 @@ void main() {
     emitQuadPoint(endPoint, right1, halfLength, dir1, normal1, vec2(1.0, 1.0), 1);
     emitQuadPoint(startPoint, -right0, halfLength, dir0, normal0, vec2(0.0, 0.0), 0);
     emitQuadPoint(endPoint, -right1, halfLength, dir1, normal1, vec2(0.0, 1.0), 1);
-
 }
 
 #shader fragment
@@ -118,7 +109,7 @@ void main() {
 #include sh.glsl
 #include BRDFs/epic_hair_BSDF.glsl
 
-//Input
+// Input
 layout(location = 0) in vec3 g_pos;
 layout(location = 1) in vec3 g_modelPos;
 layout(location = 2) in vec3 g_normal;
@@ -129,15 +120,16 @@ layout(location = 6) in vec3 g_modelDir;
 layout(location = 7) in vec3 g_color;
 layout(location = 8) in vec3 g_origin;
 
-//Uniforms
+// Uniforms
 layout(set = 0, binding = 2) uniform sampler2DArray shadowMap;
 layout(set = 0, binding = 4) uniform samplerCube irradianceMap;
 
-layout(set = 0, binding = 10) uniform sampler3D hairVoxels;
-layout(set = 0, binding = 13) uniform sampler3D hairLUT;
+layout(set = 0, binding = 9) uniform sampler3D hairVoxelsSh;
+layout(set = 0, binding = 13) uniform sampler3D hairVoxelsDensity;
+layout(set = 0, binding = 12) uniform sampler3D hairLUT;
 
 layout(set = 1, binding = 1) uniform MaterialUniforms {
-    vec3 baseColor;
+    vec3  baseColor;
     float thickness;
 
     float roughness;
@@ -162,8 +154,9 @@ layout(set = 1, binding = 1) uniform MaterialUniforms {
 
     float scatter;
     float densityBoost;
-
-} material;
+    float advShadows;
+}
+material;
 
 EpicHairBSDF bsdf;
 
@@ -173,31 +166,33 @@ layout(location = 1) out vec4 outBrightColor;
 vec3 computeAmbient(vec3 n) {
 
     vec3 ambient;
-    if(scene.useIBL) {
-        float rad = radians(scene.envRotation);
-        float c = cos(rad);
-        float s = sin(rad);
-        mat3 rotationY = mat3(c, 0.0, -s, 0.0, 1.0, 0.0, s, 0.0, c);
-        vec3 rotatedNormal = normalize(rotationY * n);
+    if (scene.useIBL)
+    {
+        float rad           = radians(scene.envRotation);
+        float c             = cos(rad);
+        float s             = sin(rad);
+        mat3  rotationY     = mat3(c, 0.0, -s, 0.0, 1.0, 0.0, s, 0.0, c);
+        vec3  rotatedNormal = normalize(rotationY * n);
 
-    } else {
+    } else
+    {
         ambient = (scene.ambientIntensity * scene.ambientColor);
     }
     return ambient;
 }
 
-//Anysotropic. Decoding from a L1 SH
+// Anysotropic. Decoding from a L1 SH
 float getNumberOfStrands(vec3 worldPos, vec3 lightWorldPos) {
     vec3 dir = normalize(lightWorldPos - worldPos);
 
     // Compute voxel UVW coords in object space
     vec3 uvw = (worldPos - object.minCoord.xyz) / (object.maxCoord.xyz - object.minCoord.xyz);
-    uvw = clamp(uvw, 0.0, 0.9999);
+    uvw      = clamp(uvw, 0.0, 0.9999);
 
     // Fetch SH L1 and decode
-    // ivec3 coord = ivec3(uvw * vec3(textureSize(hairVoxels, 0)));
-    // vec4 SHL1 = texelFetch(hairVoxels, coord, 0);
-    vec4 SHL1 = texture(hairVoxels, uvw, 0);
+    // ivec3 coord = ivec3(uvw * vec3(textureSize(hairVoxelsSh, 0)));
+    // vec4 SHL1 = texelFetch(hairVoxelsSh, coord, 0);
+    vec4 SHL1 = texture(hairVoxelsSh, uvw, 0);
 
     return decodeScalarFromSHL1(SHL1, dir);
 }
@@ -205,6 +200,74 @@ float getNumberOfStrands(vec3 worldPos, vec3 lightWorldPos) {
 //////////////////////////////////////////////////////////////////////////
 // Special shadow mapping for hair for controlling density
 //////////////////////////////////////////////////////////////////////////
+
+float computeHairShadowDDA(vec3 worldPos, vec3 lightDir)
+{
+    vec3 boundsMin = object.minCoord.xyz;
+    vec3 boundsMax = object.maxCoord.xyz;
+
+    ivec3 dim = textureSize(hairVoxelsDensity, 0);
+    vec3 gridSize = vec3(dim);
+    vec3 invBounds = 1.0 / (boundsMax - boundsMin);
+
+    // Convert world → voxel coords
+    vec3 startV = (worldPos - boundsMin) * invBounds * gridSize;
+    vec3 rayDirV = normalize(lightDir) * gridSize * 0.5; // scaled voxel ray step
+
+    // Compute DDA parameters
+    ivec3 voxel = ivec3(floor(startV));
+    ivec3 step = ivec3(sign(rayDirV));
+
+    vec3 tMax;
+    vec3 tDelta = abs(1.0 / rayDirV);
+
+    for (int axis = 0; axis < 3; axis++)
+    {
+        float nextBoundary = (step[axis] > 0)
+            ? (float(voxel[axis] + 1) - startV[axis])
+            : (startV[axis] - float(voxel[axis]));
+
+        tMax[axis] = nextBoundary * tDelta[axis];
+    }
+
+    float accum = 0.0;
+    int maxSteps = 32; // cheap! this is shadow, not SH baking
+
+    for (int i = 0; i < maxSteps; i++)
+    {
+        if (voxel.x < 0 || voxel.y < 0 || voxel.z < 0 ||
+            voxel.x >= dim.x || voxel.y >= dim.y || voxel.z >= dim.z)
+            break;
+
+        // float d = texelFetch(hairVoxelsDensity, voxel, 0).r;
+
+        vec3 worldV = (vec3(voxel) + 0.5) / gridSize;
+        float d = texture(hairVoxelsDensity, worldV).r;
+        // if(i>0)
+        accum += d;
+
+        // Step voxel
+        if (tMax.x < tMax.y)
+        {
+            if (tMax.x < tMax.z) {
+                voxel.x += step.x; tMax.x += tDelta.x;
+            } else {
+                voxel.z += step.z; tMax.z += tDelta.z;
+            }
+        }
+        else
+        {
+            if (tMax.y < tMax.z) {
+                voxel.y += step.y; tMax.y += tDelta.y;
+            } else {
+                voxel.z += step.z; tMax.z += tDelta.z;
+            }
+        }
+    }
+
+    return accum;
+}
+
 float bilinear(float v[4], vec2 f) {
     return mix(mix(v[0], v[1], f.x), mix(v[2], v[3], f.x), f.y);
 }
@@ -214,9 +277,9 @@ vec3 bilinear(vec3 v[4], vec2 f) {
 }
 vec3 hairShadow(out vec3 spread, out float directF, vec3 pShad, sampler2DArray shadowMap, int lightId, float density) {
     ivec2 size = textureSize(shadowMap, 0).xy;
-    vec2 t = pShad.xy * vec2(size) + 0.5;
-    vec2 f = t - floor(t);
-    vec2 s = 0.5 / vec2(size);
+    vec2  t    = pShad.xy * vec2(size) + 0.5;
+    vec2  f    = t - floor(t);
+    vec2  s    = 0.5 / vec2(size);
 
     vec2 tcp[4];
     tcp[0] = pShad.xy + vec2(-s.x, -s.y);
@@ -225,28 +288,29 @@ vec3 hairShadow(out vec3 spread, out float directF, vec3 pShad, sampler2DArray s
     tcp[3] = pShad.xy + vec2(s.x, s.y);
 
     const float coverage = 0.05;
-    const vec3 a_f = vec3(0.507475266, 0.465571405, 0.394347166);
-    const vec3 w_f = vec3(0.028135575, 0.027669785, 0.027669785);
-    float dir[4];
-    vec3 spr[4], t_d[4];
-    for(int i = 0; i < 4; ++i) {
+    const vec3  a_f      = vec3(0.507475266, 0.465571405, 0.394347166);
+    const vec3  w_f      = vec3(0.028135575, 0.027669785, 0.027669785);
+    float       dir[4];
+    vec3        spr[4], t_d[4];
+    for (int i = 0; i < 4; ++i)
+    {
         float z = texture(shadowMap, vec3(tcp[i], lightId)).r;
         float h = max(0.0, pShad.z - z);
         float n = h * density * 10000.0;
-        dir[i] = pow(1.0 - coverage, n);
-        t_d[i] = pow(1.0 - coverage * (1.0 - a_f), vec3(n, n, n));
-        spr[i] = n * coverage * w_f;
+        dir[i]  = pow(1.0 - coverage, n);
+        t_d[i]  = pow(1.0 - coverage * (1.0 - a_f), vec3(n, n, n));
+        spr[i]  = n * coverage * w_f;
     }
 
     directF = bilinear(dir, f);
-    spread = bilinear(spr, f);
+    spread  = bilinear(spr, f);
     return bilinear(t_d, f);
 }
 
 vec3 computeHairShadow(LightUniform light, int lightId, sampler2DArray shadowMap, float density, vec3 pos, out vec3 spread, out float directF) {
     vec4 posLightSpace = light.viewProj * vec4(pos, 1.0);
-    vec3 projCoords = posLightSpace.xyz / posLightSpace.w;
-    projCoords.xy = projCoords.xy * 0.5 + 0.5;
+    vec3 projCoords    = posLightSpace.xyz / posLightSpace.w;
+    projCoords.xy      = projCoords.xy * 0.5 + 0.5;
 
     vec3 transDirect = hairShadow(spread, directF, projCoords, shadowMap, lightId, density);
     directF *= 0.5;
@@ -255,77 +319,96 @@ vec3 computeHairShadow(LightUniform light, int lightId, sampler2DArray shadowMap
 
 void main() {
 
-    //BSDF setup ............................................................
-    // bsdf.baseColor = material.baseColor;
+    // BSDF setup ............................................................
+    //  bsdf.baseColor = material.baseColor;
     bsdf.baseColor = material.baseColor;
 
     bsdf.roughness = material.roughness;
-    bsdf.metallic = material.metallic;
-    bsdf.specular = material.specular;
+    bsdf.metallic  = material.metallic;
+    bsdf.specular  = material.specular;
 
     bsdf.shift = material.shift;
-    bsdf.ior = material.ior;
+    bsdf.ior   = material.ior;
 
-    bsdf.Rpower = material.Rpower;
-    bsdf.TTpower = material.TTpower;
+    bsdf.Rpower   = material.Rpower;
+    bsdf.TTpower  = material.TTpower;
     bsdf.TRTpower = material.TRTpower;
 
     bsdf.useLegacyAbsorption = (material.useLegacyAbsorption > 0.5);
-    bsdf.useSeparableR = (material.useSeparableR > 0.5);
-    bsdf.useBacklit = (material.useBacklit > 0.5);
+    bsdf.useSeparableR       = (material.useSeparableR > 0.5);
+    bsdf.useBacklit          = (material.useBacklit > 0.5);
 
     bsdf.clampBSDFValue = (material.clampBSDFValue > 0.5);
 
     bsdf.opaqueVisibility = material.opaqueVisibility;
 
-    bsdf.localScattering = vec3(0.0);
+    bsdf.localScattering  = vec3(0.0);
     bsdf.globalScattering = vec3(1.0);
 
     // bsdf.scatteringComponentEnabled = uint(material.scatteringComponentEnabled);
 
-    //DIRECT LIGHTING .......................................................
+    // DIRECT LIGHTING .......................................................
     vec3 color = vec3(0.0);
-    for(int i = 0; i < scene.numLights; i++) {
-        //If inside liught area influence
-        if(isInAreaOfInfluence(scene.lights[i], g_pos)) {
+    for (int i = 0; i < scene.numLights; i++)
+    {
+        // If inside liught area influence
+        if (isInAreaOfInfluence(scene.lights[i], g_pos))
+        {
 
-            vec3 shadow = vec3(1.0);
-            vec3 spread = vec3(0.0);
+            vec3  shadow         = vec3(1.0);
+            vec3  spread         = vec3(0.0);
             float directFraction = 1.0;
-            if(int(object.otherParams.y) == 1 && scene.lights[i].shadowCast == 1) {
-                if(scene.lights[i].shadowType == 0) //Classic
+            if (int(object.otherParams.y) == 1 && scene.lights[i].shadowCast == 1)
+            {
+                if (scene.lights[i].shadowType == 0) // Classic
                     shadow = computeHairShadow(scene.lights[i], i, shadowMap, 0.7, g_modelPos, spread, directFraction);
-                if(scene.lights[i].shadowType == 1) //VSM   
+                if (scene.lights[i].shadowType == 1) // VSM
                     shadow = computeHairShadow(scene.lights[i], i, shadowMap, 0.7, g_modelPos, spread, directFraction);
             }
 
-            vec3 L = normalize(scene.lights[i].position.xyz - g_pos);
-            vec3 V = normalize(-g_pos);
-            vec3 T = normalize(g_dir);
+            vec3  L         = normalize(scene.lights[i].position.xyz - g_pos);
+            vec3  V         = normalize(-g_pos);
+            vec3  T         = normalize(g_dir);
             float inBacklit = saturate(dot(-L, V));
 
-            //Number of traversed strands
+            // Number of traversed strands
             HairTransmittanceMask transMask;
-            float rawCount = getNumberOfStrands(g_modelPos, (camera.invView * vec4(scene.lights[i].position, 1.0)).xyz);
+            float                 rawCount = getNumberOfStrands(g_modelPos, (camera.invView * vec4(scene.lights[i].position, 1.0)).xyz);
             rawCount *= material.densityBoost;
 #define USE_AMANATIDES_WOO_DDA 1
-#if USE_AMANATIDES_WOO_DDA 
+#if USE_AMANATIDES_WOO_DDA
             // Much weaker perceptual curve now
-            float k = 0.6;                          // instead of 2.0
-            float hLog = log(1.0 + k * rawCount) / log(1.0 + k);
-            float hSmooth = pow(hLog, 0.9);         // more linear, less softening
+            float k       = 0.6; // instead of 2.0
+            float hLog    = log(1.0 + k * rawCount) / log(1.0 + k);
+            float hSmooth = pow(hLog, 0.9); // more linear, less softening
 #else
             // This is basically a perceptual remap + contrast recovery
-            float k = 2.0;
-            float hLog = log(1.0 + k * rawCount) / log(1.0 + k);
+            float k       = 2.0;
+            float hLog    = log(1.0 + k * rawCount) / log(1.0 + k);
             float hSmooth = pow(hLog, 0.8); // 0.7–0.9 = softer
 #endif
             transMask.hairCount = hSmooth;
 
             transMask.visibility = directFraction;
 
-            bsdf = evalHairMultipleScattering(V, L, T, transMask, hairLUT, bsdf);
-            vec3 lighting = evalEpicHairBSDF(L, V, T, directFraction, bsdf, inBacklit, scene.lights[i].area, material.r > 0.5, material.tt > 0.5, material.trt > 0.5, material.scatter > 0.5) * scene.lights[i].color * scene.lights[i].intensity;
+            if(material.advShadows > 0.0){
+                float sigma = 0.5; // tweak ~0.3–1.2 depending on density scale
+                transMask.visibility = exp(-sigma * computeHairShadowDDA(g_modelPos, normalize((camera.invView * vec4(scene.lights[i].position, 1.0)).xyz -g_modelPos)));
+            }
+
+            bsdf          = evalHairMultipleScattering(V, L, T, transMask, hairLUT, bsdf);
+            vec3 lighting = evalEpicHairBSDF(L,
+                                             V,
+                                             T,
+                                             directFraction,
+                                             bsdf,
+                                             inBacklit,
+                                             scene.lights[i].area,
+                                             material.r > 0.5,
+                                             material.tt > 0.5,
+                                             material.trt > 0.5,
+                                             material.scatter > 0.5) *
+                            scene.lights[i].color * scene.lights[i].intensity;
 
             color += lighting;
             // if(transMask.hairCount < 1000000.0)
@@ -337,24 +420,24 @@ void main() {
     vec3 fakeNormal = normalize(g_modelPos - object.volumeCenter);
     // vec3 fakeNormal = mix(n1,n2,0.5);
 
-    //AMBIENT COMPONENT ..........................................................
+    // AMBIENT COMPONENT ..........................................................
 
     vec3 ambient = computeAmbient(fakeNormal);
     color += ambient;
 
-    if(int(object.otherParams.x) == 1 && scene.enableFog) {
+    if (int(object.otherParams.x) == 1 && scene.enableFog)
+    {
         float f = computeFog(gl_FragCoord.z);
-        color = f * color + (1 - f) * scene.fogColor.rgb;
+        color   = f * color + (1 - f) * scene.fogColor.rgb;
     }
 
-//    vec3 color = vec3(41.0,0.0,0.0);
+    //    vec3 color = vec3(41.0,0.0,0.0);
 
     fragColor = vec4(color, 1.0);
-     // check whether result is higher than some threshold, if so, output as bloom threshold color
+    // check whether result is higher than some threshold, if so, output as bloom threshold color
     float brightness = dot(color, vec3(0.2126, 0.7152, 0.0722));
-    if(brightness > 1.0)
+    if (brightness > 1.0)
         outBrightColor = vec4(color, 1.0);
     else
         outBrightColor = vec4(0.0, 0.0, 0.0, 1.0);
-
 }

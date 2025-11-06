@@ -260,6 +260,7 @@ class HairEpicMaterial : public IMaterial
     bool m_useBacklit          = false;
     bool m_clampBSDFValue      = false;
     bool m_useScatter          = false;
+    bool m_advancedShadowing   = false;
 
     Geometry* m_skullGeometry = nullptr;
 
@@ -382,7 +383,7 @@ class HairEpicMaterial : public IMaterial
     }
     void set_density_boost(float met) {
         m_densityBoost = met;
-        m_isDirty  = true;
+        m_isDirty      = true;
     }
 
     float get_shift() const {
@@ -433,6 +434,13 @@ class HairEpicMaterial : public IMaterial
     void set_useScatter(bool useScatter) {
         m_useScatter = useScatter;
         m_isDirty    = true;
+    }
+    bool get_adv_shadows() const {
+        return m_advancedShadowing;
+    }
+    void set_adv_shadows(bool use) {
+        m_advancedShadowing = use;
+        m_isDirty           = true;
     }
     void set_skull(Geometry* skullGeometry) {
         m_skullGeometry = skullGeometry;
