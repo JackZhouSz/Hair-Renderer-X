@@ -10,7 +10,6 @@
 #include <engine/core/passes/pass.h>
 #include <engine/core/resource_manager.h>
 
-
 VULKAN_ENGINE_NAMESPACE_BEGIN
 
 namespace Core {
@@ -21,6 +20,13 @@ namespace Core {
 
 class HairVoxelizationPass final : public GraphicPass
 {
+
+    struct VolumeData {
+        Mat4  model;
+        Vec4  maxCoord;
+        Vec4  minCoord;
+        float density;
+    };
 
     /*Descriptors*/
     struct FrameDescriptors {
@@ -33,7 +39,7 @@ class HairVoxelizationPass final : public GraphicPass
     const uint32_t   MAX_DIRECTIONS = 16;
     Graphics::Buffer m_directionsBuffer;
 
-    const uint32_t MIP_LEVELS = 4;
+    const uint32_t               MIP_LEVELS = 4;
     std::vector<Graphics::Image> m_voxelMips;
 
     void create_voxelization_image();

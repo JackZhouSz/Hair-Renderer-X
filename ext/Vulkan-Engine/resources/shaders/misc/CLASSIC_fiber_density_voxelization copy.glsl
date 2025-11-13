@@ -23,59 +23,23 @@ layout(set = 1, binding = 1) uniform MaterialUniforms {
     vec4 slot8; 
 } material;
 
-layout(push_constant) uniform Volume{
-    mat4 model;
-    vec4 maxCoord;
-    vec4 minCoord;
-    float density;
-}volume;
 
 void main() {
 
-    v_pos = (volume.model * vec4(pos, 1.0)).xyz;
+    v_pos = (object.model * vec4(pos, 1.0)).xyz;
     // v_pos = pos;
 
-    vec3 ndc = mapToZeroOne(v_pos, volume.minCoord.xyz, volume.maxCoord.xyz) ;
+    vec3 ndc = mapToZeroOne(v_pos, object.minCoord.xyz, object.maxCoord.xyz) ;
     ndc.xy = ndc.xy * 2.0 -1.0; //Because Vulkan
     
     gl_Position = vec4(ndc, 1.0);
     
 }
 
-#shader geometry
-#version 460
-#extension GL_NV_geometry_shader_passthrough : enable
-
-layout(triangles) in;
-layout(triangle_strip, max_vertices = 3) out;
-
-layout(location = 0) in vec3 v_pos[];
-
-layout(location = 0) out vec3 _pos;
-
-void main() {
-
-    const vec3 p1 = gl_in[1].gl_Position.xyz - gl_in[0].gl_Position.xyz;
-    const vec3 p2 = gl_in[2].gl_Position.xyz - gl_in[0].gl_Position.xyz;
-    const vec3 p = abs(cross(p1, p2));
-
-    for(uint i = 0; i < 3; ++i) {
-        _pos = v_pos[i];
-        if(p.z > p.x && p.z > p.y) {
-            gl_Position = vec4(gl_in[i].gl_Position.x, gl_in[i].gl_Position.y, 0, 1);
-        } else if(p.x > p.y && p.x > p.z) {
-            gl_Position = vec4(gl_in[i].gl_Position.y, gl_in[i].gl_Position.z, 0, 1);
-        } else {
-            gl_Position = vec4(gl_in[i].gl_Position.x, gl_in[i].gl_Position.z, 0, 1);
-        }
-        EmitVertex();
-    }
-    EndPrimitive();
-}
-
 #shader fragment
 #version 460
 #extension GL_EXT_shader_atomic_float : require
+#include object.glsl
 #include utils.glsl
 
 #define USE_SPLAT_KERNEL 1
@@ -84,16 +48,9 @@ layout(location = 0) in vec3 _pos; // worldspace position of the rasterized hair
 
 layout(set = 0, binding = 2, r32f) uniform image3D voxelImage;
 
-layout(push_constant) uniform Volume{
-     mat4 model;
-    vec4 maxCoord;
-    vec4 minCoord;
-    float density;
-}volume;
-
 ivec3 worldSpaceToVoxelSpace(vec3 worldPos, out vec3 voxelFloat)
 {
-    vec3 uvw = mapToZeroOne(worldPos, volume.minCoord.xyz, volume.maxCoord.xyz);
+    vec3 uvw = mapToZeroOne(worldPos, object.minCoord.xyz, object.maxCoord.xyz);
     
     // voxel float coordinates
     voxelFloat = uvw * vec3(imageSize(voxelImage));
@@ -125,11 +82,11 @@ void main()
         float wz = (dz == 0) ? (1.0 - frac.z) : frac.z;
         float w = wx * wy * wz;
 
-        imageAtomicAdd(voxelImage, c,volume.density * w);
+        imageAtomicAdd(voxelImage, c, w);
     }
 
 #else
     // nearest voxel fill
-    imageAtomicAdd(voxelImage, base, volume.density);
+    imageAtomicAdd(voxelImage, base, 1.0);
 #endif
 }

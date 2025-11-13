@@ -1,4 +1,6 @@
 #include <engine/core/passes/hair_voxelization_pass.h>
+#include <engine/core/materials/hair.h>
+
 
 VULKAN_ENGINE_NAMESPACE_BEGIN
 using namespace Graphics;
@@ -186,14 +188,6 @@ void HairVoxelizationPass::setup_shader_passes() {
 
     m_shaderPasses[0] = voxelPass;
 
-    ComputeShaderPass* countPass = new ComputeShaderPass(m_device->get_handle(), ENGINE_RESOURCES_PATH "shaders/misc/opticaldensity_to_count.glsl");
-    countPass->settings.descriptorSetLayoutIDs = {{0, true}, {1, false}, {2, false}};
-    countPass->settings.pushConstants          = {Graphics::PushConstant(SHADER_STAGE_COMPUTE, sizeof(Vec4))};
-    countPass->build_shader_stages();
-    countPass->build(m_descriptorPool);
-
-    m_shaderPasses[2] = countPass;
-
 #endif
 #if DDA_VOXELIZATION == 1
     ComputeShaderPass* voxelPass = new ComputeShaderPass(m_device->get_handle(), ENGINE_RESOURCES_PATH "shaders/misc/DDA_density_voxelization.glsl");
@@ -205,8 +199,8 @@ void HairVoxelizationPass::setup_shader_passes() {
     m_shaderPasses[0] = voxelPass;
 #elif RASTER_VOXELIZATION == 1
 
-    GraphicShaderPass* voxelPass =
-        new GraphicShaderPass(m_device->get_handle(), m_renderpass, m_imageExtent, ENGINE_RESOURCES_PATH "shaders/misc/CLASSIC_density_voxelization.glsl");
+    GraphicShaderPass* voxelPass = new GraphicShaderPass(
+        m_device->get_handle(), m_renderpass, m_imageExtent, ENGINE_RESOURCES_PATH "shaders/misc/CLASSIC_fiber_density_voxelization.glsl");
     voxelPass->settings.descriptorSetLayoutIDs = {{GLOBAL_LAYOUT, true}, {OBJECT_LAYOUT, true}, {OBJECT_TEXTURE_LAYOUT, false}};
     voxelPass->graphicSettings.attributes      = {
         {POSITION_ATTRIBUTE, true}, {NORMAL_ATTRIBUTE, false}, {UV_ATTRIBUTE, false}, {TANGENT_ATTRIBUTE, false}, {COLOR_ATTRIBUTE, false}};
@@ -237,6 +231,23 @@ void HairVoxelizationPass::setup_shader_passes() {
     mipPass->build(m_descriptorPool);
 
     m_shaderPasses[3] = mipPass;
+
+    GraphicShaderPass* skullVoxelPass =
+        new GraphicShaderPass(m_device->get_handle(), m_renderpass, m_imageExtent, ENGINE_RESOURCES_PATH "shaders/misc/CLASSIC_density_voxelization.glsl");
+    skullVoxelPass->settings.descriptorSetLayoutIDs = {{GLOBAL_LAYOUT, true}, {OBJECT_LAYOUT, false}, {OBJECT_TEXTURE_LAYOUT, false}};
+    skullVoxelPass->graphicSettings.attributes      = {
+        {POSITION_ATTRIBUTE, true}, {NORMAL_ATTRIBUTE, false}, {UV_ATTRIBUTE, false}, {TANGENT_ATTRIBUTE, false}, {COLOR_ATTRIBUTE, false}};
+    skullVoxelPass->graphicSettings.dynamicStates    = {VK_DYNAMIC_STATE_VIEWPORT, VK_DYNAMIC_STATE_SCISSOR};
+    VkPipelineColorBlendAttachmentState state        = Init::color_blend_attachment_state(false);
+    state.colorWriteMask                             = 0;
+    skullVoxelPass->graphicSettings.depthTest        = false;
+    skullVoxelPass->graphicSettings.blendAttachments = {state};
+    skullVoxelPass->settings.pushConstants                  = {Graphics::PushConstant(SHADER_STAGE_FRAGMENT, sizeof(VolumeData))};
+
+    skullVoxelPass->build_shader_stages();
+    skullVoxelPass->build(m_descriptorPool);
+
+    m_shaderPasses[4] = skullVoxelPass;
 }
 void HairVoxelizationPass::render(Graphics::Frame& currentFrame, Scene* const scene, uint32_t presentImageIndex) {
     PROFILING_EVENT()
@@ -306,16 +317,43 @@ void HairVoxelizationPass::render(Graphics::Frame& currentFrame, Scene* const sc
                         cmd.bind_descriptor_set(m_descriptors[currentFrame.index].globalDescritor, 0, *shPass, {0, 0}, BINDING_TYPE_COMPUTE);
                         cmd.bind_descriptor_set(
                             m_descriptors[currentFrame.index].objectDescritor, 1, *shPass, {objectOffset, objectOffset}, BINDING_TYPE_COMPUTE);
-                        cmd.bind_descriptor_set(m_descriptors[currentFrame.index].bufferDescritor, 2, *shPass, {}, BINDING_TYPE_COMPUTE);
-
-                        uint32_t numSegments   = m->get_geometry()->get_properties().vertexIndex.size() * 0.5;
-                        float    avgHairLength = m->get_geometry()->get_properties().avgFiberLength * m->get_scale().x;
-                        Vec4     data          = Vec4(float(mesh_idx), float(numSegments), avgHairLength, 0.0);
-                        cmd.push_constants(*shPass, SHADER_STAGE_COMPUTE, &data, sizeof(Vec4));
-
-                        // Dispatch
+                            cmd.bind_descriptor_set(m_descriptors[currentFrame.index].bufferDescritor, 2, *shPass, {}, BINDING_TYPE_COMPUTE);
+                            
+                            uint32_t numSegments   = m->get_geometry()->get_properties().vertexIndex.size() * 0.5;
+                            float    avgHairLength = m->get_geometry()->get_properties().avgFiberLength * m->get_scale().x;
+                            Vec4     data          = Vec4(float(mesh_idx), float(numSegments), avgHairLength, 0.0);
+                            cmd.push_constants(*shPass, SHADER_STAGE_COMPUTE, &data, sizeof(Vec4));
+                            
+                            // Dispatch
                         uint32_t wg = (numSegments + 31) / 32; // 32 threads
-                        cmd.dispatch_compute({wg, 1, 1});
+                        // cmd.dispatch_compute({wg, 1, 1});
+                        
+                        // Draw triangles of skull and add them to the voxelization
+                        auto skull = static_cast<HairEpicMaterial*>(mat)->get_skull();
+                        if (skull)
+                        {
+                            cmd.begin_renderpass(m_renderpass, m_framebuffers[0]);
+                            
+                            cmd.set_viewport(m_imageExtent);
+                            
+                            shPass = m_shaderPasses[4];
+                            // Bind pipeline
+                            cmd.bind_shaderpass(*shPass);
+                            cmd.bind_descriptor_set(m_descriptors[currentFrame.index].globalDescritor, 0, *shPass, {0, 0});
+
+                            // DRAW
+                            VolumeData vol;
+                            vol.model = skull->get_model_matrix();
+                            vol.maxCoord = m->get_model_matrix() * Vec4(m->get_bounding_volume()->maxCoords, 1.0);  
+                            vol.minCoord = m->get_model_matrix() * Vec4(m->get_bounding_volume()->minCoords, 1.0);
+                            vol.density = FLT_MAX;  
+                            vol.density = 3.0;  
+                            cmd.push_constants(*shPass, SHADER_STAGE_FRAGMENT, &vol, sizeof(VolumeData));
+
+                            cmd.draw_geometry(*get_VAO(skull->get_geometry()));
+
+                            cmd.end_renderpass(m_renderpass, m_framebuffers[0]);
+                        }
 
 #else
                         /*

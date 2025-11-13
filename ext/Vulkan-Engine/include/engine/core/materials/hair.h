@@ -262,7 +262,7 @@ class HairEpicMaterial : public IMaterial
     bool m_useScatter          = false;
     bool m_advancedShadowing   = false;
 
-    Geometry* m_skullGeometry = nullptr;
+    Mesh* m_skull = nullptr;
 
     std::unordered_map<int, ITexture*> m_textures;
 
@@ -442,11 +442,11 @@ class HairEpicMaterial : public IMaterial
         m_advancedShadowing = use;
         m_isDirty           = true;
     }
-    void set_skull(Geometry* skullGeometry) {
-        m_skullGeometry = skullGeometry;
+    void set_skull(Mesh* skull) {
+        m_skull = skull;
     };
-    Geometry* get_skull() {
-        return m_skullGeometry;
+    Mesh* get_skull() {
+        return m_skull;
     };
 };
 

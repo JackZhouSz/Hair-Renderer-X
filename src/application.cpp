@@ -108,7 +108,7 @@ void HairViewer::setup() {
     // hair2->set_active(false);
 
     Mesh* head = new Mesh();
-    Tools::Loaders::load_3D_file(head, MESH_PATH + "woman2.ply");
+    Tools::Loaders::load_3D_file(head, MESH_PATH + "woman2.ply", false);
     head->set_rotation({0.0, 0.0f, 180.0f});
     auto     headMat    = new PhysicallyBasedMaterial();
     Texture* headAlbedo = new Texture();
@@ -131,6 +131,8 @@ void HairViewer::setup() {
     eyesMat->set_roughness(0.1f);
     eyes->set_name("Eyes");
     head->add_child(eyes);
+
+    hmat->set_skull(head);
     // head->add_child(hair);
     m_scene->add(head);
     m_scene->add(hair);
