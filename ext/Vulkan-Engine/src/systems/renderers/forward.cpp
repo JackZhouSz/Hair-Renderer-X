@@ -45,7 +45,7 @@ void ForwardRenderer::create_passes() {
 
     // Hair Related Passes
     m_passes[HAIR_SCATTER_PASS] = new Core::HairScatteringPass(m_device, 128);
-    m_passes[HAIR_VOXELIZATION_PASS] = new Core::HairVoxelizationPass(m_device, 128);
+    m_passes[HAIR_VOXELIZATION_PASS] = new Core::HairVoxelizationPass(m_device, 256);
     //  m_passes[HAIR_VOXELIZATION_PASS] ->set_active(false);
 
     // Forward Pass

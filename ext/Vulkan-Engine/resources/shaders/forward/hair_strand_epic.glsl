@@ -128,6 +128,11 @@ layout(set = 0, binding = 9) uniform sampler3D hairVoxelsSh;
 layout(set = 0, binding = 13) uniform sampler3D hairVoxelsDensity;
 layout(set = 0, binding = 12) uniform sampler3D hairLUT;
 
+layout(push_constant) uniform Data{
+    float id;
+    float avgFiberLength;
+} data;
+
 layout(set = 1, binding = 1) uniform MaterialUniforms {
     vec3  baseColor;
     float thickness;
@@ -182,7 +187,7 @@ vec3 computeAmbient(vec3 n) {
 }
 
 // Anysotropic. Decoding from a L1 SH
-float getNumberOfStrands(vec3 worldPos, vec3 lightWorldPos) {
+float getOpticalDensity(vec3 worldPos, vec3 lightWorldPos) {
     vec3 dir = normalize(lightWorldPos - worldPos);
 
     // Compute voxel UVW coords in object space
@@ -200,6 +205,44 @@ float getNumberOfStrands(vec3 worldPos, vec3 lightWorldPos) {
 //////////////////////////////////////////////////////////////////////////
 // Special shadow mapping for hair for controlling density
 //////////////////////////////////////////////////////////////////////////
+
+float computeHairShadowCone(vec3 worldPos, vec3 lightDir)
+{
+    vec3 boundsMin = object.minCoord.xyz;
+    vec3 boundsMax = object.maxCoord.xyz;
+    vec3 boxSize   = boundsMax - boundsMin;
+
+    vec3 texPos = (worldPos - boundsMin) / boxSize;
+
+    float t = 0.001;
+    float tMax = 1.0;               
+    float sigma = 0.7;
+    float coneAngle = 0.02;
+    float trans = 1.0;
+
+    const int MAX_STEPS = 64;       // drastically fewer now
+    float step = 1.0 / 256.0;       // start near one voxel
+
+    for (int i = 0; i < MAX_STEPS && trans > 0.001; i++)
+    {
+        float radius = coneAngle * t;
+        float mip = clamp(log2(max(radius * 256.0, 1e-4)), 0.0, 3.0);
+
+        vec3 samplePos = texPos + lightDir * t;
+        float dens = textureLod(hairVoxelsDensity, samplePos, mip).r;
+
+        // exponential attenuation
+        trans *= exp(-dens * sigma * step * 256.0);
+
+        // exponential step growth
+        t += step;
+        step *= 1.05;  
+
+        if (t > tMax) break;
+    }
+
+    return trans;
+}
 
 float computeHairShadowDDA(vec3 worldPos, vec3 lightDir)
 {
@@ -231,7 +274,7 @@ float computeHairShadowDDA(vec3 worldPos, vec3 lightDir)
     }
 
     float accum = 0.0;
-    int maxSteps = 32; // cheap! this is shadow, not SH baking
+    int maxSteps = 256; // cheap! this is shadow, not SH baking
 
     for (int i = 0; i < maxSteps; i++)
     {
@@ -242,7 +285,7 @@ float computeHairShadowDDA(vec3 worldPos, vec3 lightDir)
         // float d = texelFetch(hairVoxelsDensity, voxel, 0).r;
 
         vec3 worldV = (vec3(voxel) + 0.5) / gridSize;
-        float d = texture(hairVoxelsDensity, worldV).r;
+        float d = textureLod(hairVoxelsDensity, worldV,0.0).r;
         // if(i>0)
         accum += d;
 
@@ -373,7 +416,7 @@ void main() {
 
             // Number of traversed strands
             HairTransmittanceMask transMask;
-            float                 rawCount = getNumberOfStrands(g_modelPos, (camera.invView * vec4(scene.lights[i].position, 1.0)).xyz);
+            float                 rawCount = getOpticalDensity(g_modelPos, (camera.invView * vec4(scene.lights[i].position, 1.0)).xyz) / max(data.avgFiberLength, 1e-9);
             rawCount *= material.densityBoost;
 #define USE_AMANATIDES_WOO_DDA 1
 #if USE_AMANATIDES_WOO_DDA
@@ -393,7 +436,9 @@ void main() {
 
             if(material.advShadows > 0.0){
                 float sigma = 0.5; // tweak ~0.3–1.2 depending on density scale
-                transMask.visibility = exp(-sigma * computeHairShadowDDA(g_modelPos, normalize((camera.invView * vec4(scene.lights[i].position, 1.0)).xyz -g_modelPos)));
+                // transMask.visibility = exp(-sigma * computeHairShadowDDA(g_modelPos, normalize((camera.invView * vec4(scene.lights[i].position, 1.0)).xyz -g_modelPos)));
+                transMask.visibility = computeHairShadowCone(g_modelPos, normalize((camera.invView * vec4(scene.lights[i].position, 1.0)).xyz -g_modelPos));
+                
             }
 
             bsdf          = evalHairMultipleScattering(V, L, T, transMask, hairLUT, bsdf);
@@ -412,7 +457,7 @@ void main() {
 
             color += lighting;
             // if(transMask.hairCount < 1000000.0)
-            // color = vec3( transMask.hairCount);
+            // color = vec3( transMask.visibility);
         }
     }
 

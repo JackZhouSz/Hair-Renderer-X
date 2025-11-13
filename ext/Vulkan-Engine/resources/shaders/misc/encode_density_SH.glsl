@@ -16,7 +16,7 @@ layout(set = 0, binding = 5) uniform sampler3D densityVolume;
 float sampleDensity(vec3 pos)
 {
     vec3 uv = (pos - object.minCoord.xyz) / (object.maxCoord.xyz - object.minCoord.xyz);
-    return texture(densityVolume, uv).r;
+    return textureLod(densityVolume, uv,2.0).r;
 }
 
 bool insideBounds(ivec3 v, ivec3 dim) {
@@ -25,7 +25,7 @@ bool insideBounds(ivec3 v, ivec3 dim) {
 
 void main()
 {
-    ivec3 dim = textureSize(densityVolume, 0);
+    ivec3 dim = textureSize(densityVolume, 2);
     ivec3 gid = ivec3(gl_GlobalInvocationID.xyz);
     if (!insideBounds(gid, dim)) return;
 
@@ -40,7 +40,7 @@ void main()
     if (sampleDensity(voxelCenter) == 0.0) return;
 
     vec4 sh = vec4(0.0);
-    const uint NUM_DIRS = 32;
+    const uint NUM_DIRS = 16;
 
     for (uint d = 0; d < NUM_DIRS; d++)
     {
@@ -61,7 +61,7 @@ void main()
         ivec3 target = ivec3(floor(endV));
 
         vec3 tMax, tDelta;
-        vec3 rayDir = normalize(endV - startV);
+        vec3 rayDir = (endV - startV);
         ivec3 step = ivec3(sign(rayDir));
 
         for (int axis = 0; axis < 3; axis++)

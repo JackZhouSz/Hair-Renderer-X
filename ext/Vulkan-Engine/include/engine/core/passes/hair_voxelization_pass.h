@@ -30,8 +30,11 @@ class HairVoxelizationPass final : public GraphicPass
     };
     std::vector<FrameDescriptors> m_descriptors;
 
-    const uint32_t   MAX_DIRECTIONS = 32;
+    const uint32_t   MAX_DIRECTIONS = 16;
     Graphics::Buffer m_directionsBuffer;
+
+    const uint32_t MIP_LEVELS = 4;
+    std::vector<Graphics::Image> m_voxelMips;
 
     void create_voxelization_image();
 

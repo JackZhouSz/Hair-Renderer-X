@@ -21,7 +21,7 @@ layout(push_constant) uniform ObjectID {
 } objectID;
 
 // Output voxel grid
-layout(set = 0, binding = 6, r32f) uniform image3D voxelLengthImage;
+layout(set = 0, binding = 2, r32f) uniform image3D voxelLengthImage;
 
 // Bindless Buffers
 layout(std430, set = 2, binding = 0) readonly buffer PosBuffer {

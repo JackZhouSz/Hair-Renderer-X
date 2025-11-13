@@ -15,7 +15,7 @@ Core::TextureHDR* ResourceManager::HAIR_FAR_FIELD_DIST = nullptr;
 Graphics::Image   ResourceManager::HAIR_BACK_ATT;
 Graphics::Image   ResourceManager::HAIR_FRONT_ATT;
 Graphics::Image   ResourceManager::HAIR_VOXEL_VOLUME;
-Graphics::Image   ResourceManager::HAIR_VOXEL_VOLUME_2;
+// Graphics::Image   ResourceManager::HAIR_VOXEL_VOLUME_2;
 Graphics::Image   ResourceManager::HAIR_PERECEIVED_DENSITY_VOLUME;
 Graphics::Image   ResourceManager::HAIR_NG;
 Graphics::Image   ResourceManager::HAIR_NG_TRT;

@@ -52,7 +52,7 @@ class ResourceManager
     static Graphics::Image   HAIR_FRONT_ATT;
     static Graphics::Image   HAIR_VOXEL_VOLUME;
     static Graphics::Image   HAIR_PERECEIVED_DENSITY_VOLUME;
-    static Graphics::Image   HAIR_VOXEL_VOLUME_2;
+    // static Graphics::Image   HAIR_VOXEL_VOLUME_2;
     static Graphics::Image   HAIR_NG;
     static Graphics::Image   HAIR_NG_TRT;
     static Graphics::Image   HAIR_BACK_SHIFTS;

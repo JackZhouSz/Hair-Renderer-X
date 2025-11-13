@@ -109,10 +109,10 @@ void HairViewer::setup() {
 
     Mesh* head = new Mesh();
     Tools::Loaders::load_3D_file(head, MESH_PATH + "woman2.ply");
-    head->set_rotation({0.0, 225.0f, 180.0f});
+    head->set_rotation({0.0, 0.0f, 180.0f});
     auto     headMat    = new PhysicallyBasedMaterial();
     Texture* headAlbedo = new Texture();
-    Tools::Loaders::load_texture(headAlbedo, TEXTURE_PATH + "curly.png");
+    Tools::Loaders::load_texture(headAlbedo, TEXTURE_PATH + "head.png");
     headMat->set_albedo_texture(headAlbedo);
     headMat->set_albedo(Vec3(204.0f, 123.0f, 85.0f) / 255.0f);
     headMat->set_albedo_weight(0.75f);
@@ -132,19 +132,20 @@ void HairViewer::setup() {
     eyes->set_name("Eyes");
     head->add_child(eyes);
     // head->add_child(hair);
-    // m_scene->add(head);
+    m_scene->add(head);
     m_scene->add(hair);
     // m_scene->add(hair2);
 #endif
 
     m_scene->set_ambient_color({0.05, 0.05, 0.05});
-    m_scene->set_ambient_intensity(0.05f);
+    m_scene->set_ambient_intensity(0.0f);
 
     TextureHDR* envMap = new TextureHDR();
     Tools::Loaders::load_HDRi(envMap, TEXTURE_PATH + "room.hdr");
     Skybox* sky = new Skybox(envMap);
     sky->set_color_intensity(0.1);
     m_scene->set_skybox(sky);
+    // sky->set_active(false);
     m_scene->set_use_IBL(false);
 
     m_scene->enable_fog(false);

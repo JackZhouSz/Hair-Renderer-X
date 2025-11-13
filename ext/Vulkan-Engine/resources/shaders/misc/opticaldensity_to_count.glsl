@@ -22,7 +22,7 @@ void main(){
     float L = imageLoad(voxelLengthImage, v).r;
 
     float hairCount = (L / max(objectID.avgFiberLength, 1e-9));
-    imageStore(voxelHairCount, v, vec4(hairCount));
+    imageStore(voxelHairCount, v, vec4(L));
 
     // density = volume fraction if needed: density = (L * crossArea) / voxelVol
     // crossArea = PI * r^2  (r must be provided as a uniform if you want density)

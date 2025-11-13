@@ -155,7 +155,7 @@ void ForwardPass::setup_uniforms(std::vector<Graphics::Frame>& frames) {
         m_descriptorPool.set_descriptor_write(&ResourceManager::HAIR_NG, LAYOUT_SHADER_READ_ONLY_OPTIMAL, &m_descriptors[i].globalDescritor, 10);
         m_descriptorPool.set_descriptor_write(&ResourceManager::HAIR_NG_TRT, LAYOUT_SHADER_READ_ONLY_OPTIMAL, &m_descriptors[i].globalDescritor, 11);
         m_descriptorPool.set_descriptor_write(&ResourceManager::HAIR_GI, LAYOUT_SHADER_READ_ONLY_OPTIMAL, &m_descriptors[i].globalDescritor, 12);
-        m_descriptorPool.set_descriptor_write(&ResourceManager::HAIR_VOXEL_VOLUME_2, LAYOUT_SHADER_READ_ONLY_OPTIMAL, &m_descriptors[i].globalDescritor, 13);
+        m_descriptorPool.set_descriptor_write(&ResourceManager::HAIR_VOXEL_VOLUME, LAYOUT_SHADER_READ_ONLY_OPTIMAL, &m_descriptors[i].globalDescritor, 13);
         // m_descriptorPool.set_descriptor_write( get_image(ResourceManager::HAIR_GI_FALLBACK), LAYOUT_SHADER_READ_ONLY_OPTIMAL,
         // &m_descriptors[i].globalDescritor, 13);
 
@@ -233,6 +233,7 @@ void ForwardPass::setup_shader_passes() {
     GraphicShaderPass* hairStrandPass2 =
         new GraphicShaderPass(m_device->get_handle(), m_renderpass, m_imageExtent, ENGINE_RESOURCES_PATH "shaders/forward/hair_strand_epic.glsl");
     hairStrandPass2->settings.descriptorSetLayoutIDs = {{GLOBAL_LAYOUT, true}, {OBJECT_LAYOUT, true}, {OBJECT_TEXTURE_LAYOUT, true}};
+    hairStrandPass2->settings.pushConstants          = {Graphics::PushConstant(SHADER_STAGE_FRAGMENT, sizeof(Vec4))};
     hairStrandPass2->graphicSettings.attributes      = {
         {POSITION_ATTRIBUTE, true}, {NORMAL_ATTRIBUTE, false}, {UV_ATTRIBUTE, false}, {TANGENT_ATTRIBUTE, true}, {COLOR_ATTRIBUTE, true}};
     hairStrandPass2->graphicSettings.dynamicStates      = dynamicStates;
@@ -311,6 +312,14 @@ void ForwardPass::render(Graphics::Frame& currentFrame, Scene* const scene, uint
 
                         // Bind pipeline
                         cmd.bind_shaderpass(*shaderPass);
+
+                        if (mat->get_type() == IMaterial::Type::HAIR_STR_EPIC_TYPE)
+                        {
+                            float avgHairLength = g->get_properties().avgFiberLength * m->get_scale().x;
+                            Vec4  data          = Vec4(float(mesh_idx), avgHairLength, 0.0, 0.0);
+                            cmd.push_constants(*shaderPass, SHADER_STAGE_FRAGMENT, &data, sizeof(Vec4));
+                        }
+
                         // GLOBAL LAYOUT BINDING
                         cmd.bind_descriptor_set(m_descriptors[currentFrame.index].globalDescritor, 0, *shaderPass, {0, 0});
                         // PER OBJECT LAYOUT BINDING
