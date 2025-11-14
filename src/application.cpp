@@ -132,7 +132,7 @@ void HairViewer::setup() {
     eyes->set_name("Eyes");
     head->add_child(eyes);
 
-    hmat->set_skull(head);
+    // hmat->set_skull(head);
     // head->add_child(hair);
     m_scene->add(head);
     m_scene->add(hair);

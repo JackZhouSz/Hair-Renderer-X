@@ -326,7 +326,7 @@ void HairVoxelizationPass::render(Graphics::Frame& currentFrame, Scene* const sc
                             
                             // Dispatch
                         uint32_t wg = (numSegments + 31) / 32; // 32 threads
-                        // cmd.dispatch_compute({wg, 1, 1});
+                        cmd.dispatch_compute({wg, 1, 1});
                         
                         // Draw triangles of skull and add them to the voxelization
                         auto skull = static_cast<HairEpicMaterial*>(mat)->get_skull();
@@ -347,7 +347,7 @@ void HairVoxelizationPass::render(Graphics::Frame& currentFrame, Scene* const sc
                             vol.maxCoord = m->get_model_matrix() * Vec4(m->get_bounding_volume()->maxCoords, 1.0);  
                             vol.minCoord = m->get_model_matrix() * Vec4(m->get_bounding_volume()->minCoords, 1.0);
                             vol.density = FLT_MAX;  
-                            vol.density = 3.0;  
+                            vol.density = 10000.0;  
                             cmd.push_constants(*shPass, SHADER_STAGE_FRAGMENT, &vol, sizeof(VolumeData));
 
                             cmd.draw_geometry(*get_VAO(skull->get_geometry()));

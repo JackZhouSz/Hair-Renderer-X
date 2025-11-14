@@ -433,6 +433,7 @@ void main() {
             transMask.hairCount = hSmooth;
 
             transMask.visibility = directFraction;
+            transMask.visibility = 1.0;
 
             if(material.advShadows > 0.0){
                 float sigma = 0.5; // tweak ~0.3–1.2 depending on density scale

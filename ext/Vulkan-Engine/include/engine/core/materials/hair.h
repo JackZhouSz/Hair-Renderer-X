@@ -252,7 +252,7 @@ class HairEpicMaterial : public IMaterial
     float m_shift = 5.2f; // In radians (-5º to -10º) => 0.088 to 0.17 //Not with epic 0.02 does fine
     float m_ior   = 1.55f;
 
-    float m_densityBoost = 3.0f;
+    float m_densityBoost = 1.5f;
 
     // Query
     bool m_useSeparableR       = false;
