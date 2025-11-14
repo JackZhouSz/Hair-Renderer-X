@@ -1,103 +1,80 @@
 #shader vertex
 #version 460 core
+#extension GL_EXT_nonuniform_qualifier : require
 #include object.glsl
-
-
-// Input
-layout(location = 0) in vec3 position;
-layout(location = 1) in vec3 normal;
-layout(location = 2) in vec3 uv;
-layout(location = 3) in vec3 tangent;
-layout(location = 4) in vec3 color;
-
-// Output
-layout(location = 0) out vec3 v_color;
-layout(location = 1) out vec3 v_tangent;
-
-void main() {
-
-
-
-    gl_Position = object.model * vec4(position, 1.0);
-
-    v_tangent = normalize(mat3(transpose(inverse(object.model))) * tangent);
-    v_color   = color;
-}
-
-#shader geometry
-#version 460 core
 #include camera.glsl
 
-// Setup
-layout(lines) in;
-layout(triangle_strip, max_vertices = 4) out;
+layout(std430, set = 3, binding = 0) readonly buffer VertexBuffer {
+    vec4 pos[];
+} vertexBuffer[];
 
-// Input
-layout(location = 0) in vec3 v_color[];
-layout(location = 1) in vec3 v_tangent[];
+layout(std430, set = 3, binding = 1) readonly buffer IndexBuffer {
+    uint index[];
+} indexBuffer[];
 
-// Uniforms
-layout(set = 1, binding = 1) uniform MaterialUniforms {
-    vec3  baseColor;
+layout(push_constant) uniform ObjectConstants {
+    float id;
+    float numSegments;
     float thickness;
-}
-material;
+    float avgFiberLength;
+}constants;
 
 // Output
-layout(location = 0) out vec3 g_pos;
-layout(location = 1) out vec3 g_modelPos;
-layout(location = 2) out vec3 g_normal;
-layout(location = 3) out vec3 g_modelNormal;
-layout(location = 4) out vec2 g_uv;
-layout(location = 5) out vec3 g_dir;
-layout(location = 6) out vec3 g_modelDir;
-layout(location = 7) out vec3 g_color;
-layout(location = 8) out vec3 g_origin;
-
-void emitQuadPoint(vec4 origin, vec4 right, float offset, vec3 forward, vec3 normal, vec2 uv, int id) {
-
-    vec4 newPos   = origin + right * offset; // Model space
-    gl_Position   = camera.viewProj * newPos;
-    g_dir         = normalize(mat3(transpose(inverse(camera.view))) * v_tangent[id]);
-    g_modelDir    = v_tangent[id];
-    g_color       = v_color[id];
-    g_pos         = (camera.view * newPos).xyz;
-    g_modelPos    = newPos.xyz;
-    g_uv          = uv;
-    g_normal      = normalize(mat3(transpose(inverse(camera.view))) * normal);
-    g_modelNormal = normal;
-    g_origin      = (camera.view * origin).xyz;
-
-    EmitVertex();
-}
+layout(location = 0) out vec3 _pos;
+layout(location = 1) out vec3 _modelPos;
+layout(location = 2) out vec2 _uv;
+layout(location = 3) out vec3 _dir;
+layout(location = 4) out vec3 _modelDir;
 
 void main() {
 
-    // Model space --->>>
+    uint segmentId = gl_InstanceIndex;
+    uint meshId    = nonuniformEXT(uint(constants.id));
+    uint base      = segmentId * 2;
 
-    vec4 startPoint = gl_in[0].gl_Position;
-    vec4 endPoint   = gl_in[1].gl_Position;
+    uint index0 = indexBuffer[meshId].index[base];
+    uint index1 = indexBuffer[meshId].index[base + 1];
+    // Safe p2: if last segment, just reuse p1
+    uint index2 = indexBuffer[meshId].index[min(base + 2, base + 1)];
 
-    vec4 view0 = vec4(camera.position.xyz, 1.0) - startPoint;
-    vec4 view1 = vec4(camera.position.xyz, 1.0) - endPoint;
+    vec3 p0 = (object.model * vertexBuffer[meshId].pos[index0]).xyz;
+    vec3 p1 = (object.model * vertexBuffer[meshId].pos[index1]).xyz;
+    vec3 p2 = (object.model * vertexBuffer[meshId].pos[index2]).xyz;
 
-    vec3 dir0 = v_tangent[0];
-    vec3 dir1 = v_tangent[1];
+    vec3 view0 = normalize(camera.position.xyz - p0);
+    vec3 view1 = normalize(camera.position.xyz - p1);
 
-    vec4 right0 = normalize(vec4(cross(dir0.xyz, view0.xyz), 0.0));
-    vec4 right1 = normalize(vec4(cross(dir1.xyz, view1.xyz), 0.0));
+    vec3 dir0 = normalize(p1 - p0);
+    vec3 dir1 = normalize(p2 - p1);
 
-    vec3 normal0 = normalize(cross(right0.xyz, dir0.xyz));
-    vec3 normal1 = normalize(cross(right1.xyz, dir1.xyz));
+    vec3 right0 = normalize(cross(dir0, view0));
+    vec3 right1 = normalize(cross(dir1, view1));
 
-    //<<<----
+    // Which vertex of the quad?
+    // v0 = left0, v1 = right0
+    // v2 = left1, v3 = right1
+    int v = gl_VertexIndex & 3; // 0–3
 
-    float halfLength = material.thickness * 0.5;
+    bool isStart = (v < 2);
+    bool isRight = (v == 1 || v == 3);
 
-    emitQuadPoint(startPoint, right0, halfLength, dir0, normal0, vec2(1.0, 0.0), 0);
-    emitQuadPoint(endPoint, right1, halfLength, dir1, normal1, vec2(1.0, 1.0), 1);
-    emitQuadPoint(startPoint, -right0, halfLength, dir0, normal0, vec2(0.0, 0.0), 0);
-    emitQuadPoint(endPoint, -right1, halfLength, dir1, normal1, vec2(0.0, 1.0), 1);
+    if (isStart)
+    {
+        _modelPos = p0 + right0 * (isRight ? constants.thickness : -constants.thickness);
+        _modelDir = dir0;
+    } else
+    {
+        _modelPos = p1 + right1 * (isRight ? constants.thickness : -constants.thickness);
+        _modelDir = dir0;
+    }
+
+    _dir = normalize((camera.view * vec4(_modelDir, 0.0)).xyz);
+
+    vec4 viewPos = camera.view * vec4(_modelPos, 1.0);
+    _pos         = viewPos.xyz;
+    _uv          = vec2(float(isRight), float(!isStart));
+
+    gl_Position = camera.viewProj * vec4(_modelPos, 1.0);
 }
 
 #shader fragment
@@ -115,13 +92,9 @@ void main() {
 // Input
 layout(location = 0) in vec3 g_pos;
 layout(location = 1) in vec3 g_modelPos;
-layout(location = 2) in vec3 g_normal;
-layout(location = 3) in vec3 g_modelNormal;
-layout(location = 4) in vec2 g_uv;
-layout(location = 5) in vec3 g_dir;
-layout(location = 6) in vec3 g_modelDir;
-layout(location = 7) in vec3 g_color;
-layout(location = 8) in vec3 g_origin;
+layout(location = 2) in vec2 g_uv;
+layout(location = 3) in vec3 g_dir;
+layout(location = 4) in vec3 g_modelDir;
 
 // Uniforms
 layout(set = 0, binding = 2) uniform sampler2DArray shadowMap;
@@ -132,7 +105,8 @@ layout(set = 0, binding = 13) uniform sampler3D hairVoxelsDensity;
 layout(set = 0, binding = 12) uniform sampler3D hairLUT;
 
 
-layout(push_constant) Data {
+
+layout(push_constant) uniform Data {
     float id;
     float numSegments;
     float thickness;
@@ -212,104 +186,107 @@ float getOpticalDensity(vec3 worldPos, vec3 lightWorldPos) {
 // Special shadow mapping for hair for controlling density
 //////////////////////////////////////////////////////////////////////////
 
-float computeHairShadowCone(vec3 worldPos, vec3 lightDir)
-{
+float computeHairShadowCone(vec3 worldPos, vec3 lightDir) {
     vec3 boundsMin = object.minCoord.xyz;
     vec3 boundsMax = object.maxCoord.xyz;
     vec3 boxSize   = boundsMax - boundsMin;
 
     vec3 texPos = (worldPos - boundsMin) / boxSize;
 
-    float t = 0.001;
-    float tMax = 1.0;               
-    float sigma = 0.7;
+    float t         = 0.001;
+    float tMax      = 1.0;
+    float sigma     = 0.7;
     float coneAngle = 0.02;
-    float trans = 1.0;
+    float trans     = 1.0;
 
-    const int MAX_STEPS = 64;       // drastically fewer now
-    float step = 1.0 / 256.0;       // start near one voxel
+    const int MAX_STEPS = 64;          // drastically fewer now
+    float     step      = 1.0 / 256.0; // start near one voxel
 
     for (int i = 0; i < MAX_STEPS && trans > 0.001; i++)
     {
         float radius = coneAngle * t;
-        float mip = clamp(log2(max(radius * 256.0, 1e-4)), 0.0, 3.0);
+        float mip    = clamp(log2(max(radius * 256.0, 1e-4)), 0.0, 3.0);
 
-        vec3 samplePos = texPos + lightDir * t;
-        float dens = textureLod(hairVoxelsDensity, samplePos, mip).r;
+        vec3  samplePos = texPos + lightDir * t;
+        float dens      = textureLod(hairVoxelsDensity, samplePos, mip).r;
 
         // exponential attenuation
         trans *= exp(-dens * sigma * step * 256.0);
 
         // exponential step growth
         t += step;
-        step *= 1.05;  
+        step *= 1.05;
 
-        if (t > tMax) break;
+        if (t > tMax)
+            break;
     }
 
     return trans;
 }
 
-float computeHairShadowDDA(vec3 worldPos, vec3 lightDir)
-{
+float computeHairShadowDDA(vec3 worldPos, vec3 lightDir) {
     vec3 boundsMin = object.minCoord.xyz;
     vec3 boundsMax = object.maxCoord.xyz;
 
-    ivec3 dim = textureSize(hairVoxelsDensity, 0);
-    vec3 gridSize = vec3(dim);
-    vec3 invBounds = 1.0 / (boundsMax - boundsMin);
+    ivec3 dim       = textureSize(hairVoxelsDensity, 0);
+    vec3  gridSize  = vec3(dim);
+    vec3  invBounds = 1.0 / (boundsMax - boundsMin);
 
     // Convert world → voxel coords
-    vec3 startV = (worldPos - boundsMin) * invBounds * gridSize;
+    vec3 startV  = (worldPos - boundsMin) * invBounds * gridSize;
     vec3 rayDirV = normalize(lightDir) * gridSize * 0.5; // scaled voxel ray step
 
     // Compute DDA parameters
     ivec3 voxel = ivec3(floor(startV));
-    ivec3 step = ivec3(sign(rayDirV));
+    ivec3 step  = ivec3(sign(rayDirV));
 
     vec3 tMax;
     vec3 tDelta = abs(1.0 / rayDirV);
 
     for (int axis = 0; axis < 3; axis++)
     {
-        float nextBoundary = (step[axis] > 0)
-            ? (float(voxel[axis] + 1) - startV[axis])
-            : (startV[axis] - float(voxel[axis]));
+        float nextBoundary = (step[axis] > 0) ? (float(voxel[axis] + 1) - startV[axis]) : (startV[axis] - float(voxel[axis]));
 
         tMax[axis] = nextBoundary * tDelta[axis];
     }
 
-    float accum = 0.0;
-    int maxSteps = 256; // cheap! this is shadow, not SH baking
+    float accum    = 0.0;
+    int   maxSteps = 256; // cheap! this is shadow, not SH baking
 
     for (int i = 0; i < maxSteps; i++)
     {
-        if (voxel.x < 0 || voxel.y < 0 || voxel.z < 0 ||
-            voxel.x >= dim.x || voxel.y >= dim.y || voxel.z >= dim.z)
+        if (voxel.x < 0 || voxel.y < 0 || voxel.z < 0 || voxel.x >= dim.x || voxel.y >= dim.y || voxel.z >= dim.z)
             break;
 
         // float d = texelFetch(hairVoxelsDensity, voxel, 0).r;
 
-        vec3 worldV = (vec3(voxel) + 0.5) / gridSize;
-        float d = textureLod(hairVoxelsDensity, worldV,0.0).r;
+        vec3  worldV = (vec3(voxel) + 0.5) / gridSize;
+        float d      = textureLod(hairVoxelsDensity, worldV, 0.0).r;
         // if(i>0)
         accum += d;
 
         // Step voxel
         if (tMax.x < tMax.y)
         {
-            if (tMax.x < tMax.z) {
-                voxel.x += step.x; tMax.x += tDelta.x;
-            } else {
-                voxel.z += step.z; tMax.z += tDelta.z;
+            if (tMax.x < tMax.z)
+            {
+                voxel.x += step.x;
+                tMax.x += tDelta.x;
+            } else
+            {
+                voxel.z += step.z;
+                tMax.z += tDelta.z;
             }
-        }
-        else
+        } else
         {
-            if (tMax.y < tMax.z) {
-                voxel.y += step.y; tMax.y += tDelta.y;
-            } else {
-                voxel.z += step.z; tMax.z += tDelta.z;
+            if (tMax.y < tMax.z)
+            {
+                voxel.y += step.y;
+                tMax.y += tDelta.y;
+            } else
+            {
+                voxel.z += step.z;
+                tMax.z += tDelta.z;
             }
         }
     }
@@ -422,7 +399,7 @@ void main() {
 
             // Number of traversed strands
             HairTransmittanceMask transMask;
-            float                 rawCount = getOpticalDensity(g_modelPos, (camera.invView * vec4(scene.lights[i].position, 1.0)).xyz) / max(data.avgFiberLength, 1e-9);
+            float rawCount = getOpticalDensity(g_modelPos, (camera.invView * vec4(scene.lights[i].position, 1.0)).xyz) / max(data.avgFiberLength, 1e-9);
             rawCount *= material.densityBoost;
 #define USE_AMANATIDES_WOO_DDA 1
 #if USE_AMANATIDES_WOO_DDA
@@ -441,11 +418,12 @@ void main() {
             transMask.visibility = directFraction;
             transMask.visibility = 1.0;
 
-            if(material.advShadows > 0.0){
+            if (material.advShadows > 0.0)
+            {
                 float sigma = 0.5; // tweak ~0.3–1.2 depending on density scale
-                // transMask.visibility = exp(-sigma * computeHairShadowDDA(g_modelPos, normalize((camera.invView * vec4(scene.lights[i].position, 1.0)).xyz -g_modelPos)));
-                transMask.visibility = computeHairShadowCone(g_modelPos, normalize((camera.invView * vec4(scene.lights[i].position, 1.0)).xyz -g_modelPos));
-                
+                // transMask.visibility = exp(-sigma * computeHairShadowDDA(g_modelPos, normalize((camera.invView * vec4(scene.lights[i].position, 1.0)).xyz
+                // -g_modelPos)));
+                transMask.visibility = computeHairShadowCone(g_modelPos, normalize((camera.invView * vec4(scene.lights[i].position, 1.0)).xyz - g_modelPos));
             }
 
             bsdf          = evalHairMultipleScattering(V, L, T, transMask, hairLUT, bsdf);

@@ -44,7 +44,7 @@ struct ShaderSource {
                                                 shaderc_optimization_level optimization);
 
     static ShaderStage
-    create_shader_stage(VkDevice device, VkShaderStageFlagBits stageType, const std::vector<uint32_t> code);
+    create_shader_stage(VkDevice device, VkShaderStageFlagBits stageType, const std::vector<uint32_t> &code);
 };
 /*
 Base shader pass data structure

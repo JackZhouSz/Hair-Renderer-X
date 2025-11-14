@@ -4,10 +4,7 @@ VULKAN_ENGINE_NAMESPACE_BEGIN
 
 namespace Graphics {
 
-void PipelineBuilder::build_pipeline_layout(VkPipelineLayout& layout,
-                                            VkDevice          device,
-                                            DescriptorPool    descriptorManager,
-                                            PipelineSettings& settings) {
+void PipelineBuilder::build_pipeline_layout(VkPipelineLayout& layout, VkDevice device, DescriptorPool descriptorManager, PipelineSettings& settings) {
     std::vector<VkDescriptorSetLayout> descriptorLayouts;
     for (auto& layoutID : settings.descriptorSetLayoutIDs)
     {
@@ -46,22 +43,26 @@ void PipelineBuilder::build_graphic_pipeline(VkPipeline&                        
                                              std::vector<VkPipelineShaderStageCreateInfo> shaderStages) {
 
     // Vertex and geometry
-    VkPipelineVertexInputStateCreateInfo   vertexInputInfo = Init::vertex_input_state_create_info();
-    VkPipelineInputAssemblyStateCreateInfo inputAssembly   = Init::input_assembly_create_info(settings.topology);
+    VkPipelineVertexInputStateCreateInfo           vertexInputInfo    = Init::vertex_input_state_create_info();
+    VkPipelineInputAssemblyStateCreateInfo         inputAssembly      = Init::input_assembly_create_info(settings.topology);
+    auto                                           bindingDescription = Vertex::getBindingDescription();
+    std::vector<VkVertexInputAttributeDescription> attributeDescriptions;
 
-    auto bindingDescription                       = Vertex::getBindingDescription();
-    vertexInputInfo.vertexBindingDescriptionCount = 1;
-    vertexInputInfo.pVertexBindingDescriptions    = &bindingDescription;
+    if (!settings.attributes.empty())
+    {
+        vertexInputInfo.vertexBindingDescriptionCount = 1;
+        vertexInputInfo.pVertexBindingDescriptions    = &bindingDescription;
 
-    auto attributeDescriptions =
-        Vertex::getAttributeDescriptions(settings.attributes[VertexAttributeType::POSITION_ATTRIBUTE],
-                                         settings.attributes[VertexAttributeType::NORMAL_ATTRIBUTE],
-                                         settings.attributes[VertexAttributeType::TANGENT_ATTRIBUTE],
-                                         settings.attributes[VertexAttributeType::UV_ATTRIBUTE],
-                                         settings.attributes[VertexAttributeType::COLOR_ATTRIBUTE]);
-    vertexInputInfo.vertexAttributeDescriptionCount = static_cast<uint32_t>(attributeDescriptions.size());
-    vertexInputInfo.pVertexAttributeDescriptions    = attributeDescriptions.data();
+        attributeDescriptions = Vertex::getAttributeDescriptions(settings.attributes[VertexAttributeType::POSITION_ATTRIBUTE],
+                                                                 settings.attributes[VertexAttributeType::NORMAL_ATTRIBUTE],
+                                                                 settings.attributes[VertexAttributeType::TANGENT_ATTRIBUTE],
+                                                                 settings.attributes[VertexAttributeType::UV_ATTRIBUTE],
+                                                                 settings.attributes[VertexAttributeType::COLOR_ATTRIBUTE]);
 
+        vertexInputInfo.vertexAttributeDescriptionCount = static_cast<uint32_t>(attributeDescriptions.size());
+        vertexInputInfo.pVertexAttributeDescriptions    = attributeDescriptions.data();
+    }
+    
     // Viewport
     VkViewport viewport = Init::viewport(extent);
     VkRect2D   scissor;
@@ -77,20 +78,16 @@ void PipelineBuilder::build_graphic_pipeline(VkPipeline&                        
     viewportState.pScissors                         = &scissor;
 
     // Rasterizer
-    VkPipelineRasterizationStateCreateInfo rasterizer =
-        Init::rasterization_state_create_info(settings.poligonMode, settings.cullMode, settings.drawOrder);
+    VkPipelineRasterizationStateCreateInfo rasterizer = Init::rasterization_state_create_info(settings.poligonMode, settings.cullMode, settings.drawOrder);
 
     // Depth Setup
-    VkPipelineDepthStencilStateCreateInfo depthStencil =
-        Init::depth_stencil_create_info(settings.depthTest ? VK_TRUE : VK_FALSE,
-                                        settings.depthWrite ? VK_TRUE : VK_FALSE,
-                                        settings.depthTest ? settings.depthOp : VK_COMPARE_OP_ALWAYS);
+    VkPipelineDepthStencilStateCreateInfo depthStencil = Init::depth_stencil_create_info(
+        settings.depthTest ? VK_TRUE : VK_FALSE, settings.depthWrite ? VK_TRUE : VK_FALSE, settings.depthTest ? settings.depthOp : VK_COMPARE_OP_ALWAYS);
 
     // Multisampling
     VkPipelineMultisampleStateCreateInfo multisampling = Init::multisampling_state_create_info(settings.samples);
-    multisampling.sampleShadingEnable =
-        settings.samples > VK_SAMPLE_COUNT_1_BIT && settings.sampleShading ? VK_TRUE : VK_FALSE;
-    multisampling.minSampleShading = .2f;
+    multisampling.sampleShadingEnable                  = settings.samples > VK_SAMPLE_COUNT_1_BIT && settings.sampleShading ? VK_TRUE : VK_FALSE;
+    multisampling.minSampleShading                     = .2f;
 
     // Blending
     VkPipelineColorBlendStateCreateInfo colorBlending = Init::color_blend_create_info();
@@ -132,10 +129,7 @@ void PipelineBuilder::build_graphic_pipeline(VkPipeline&                        
                              "Pipeline");
     }
 }
-void PipelineBuilder::build_compute_pipeline(VkPipeline&                     pipeline,
-                                             VkPipelineLayout&               layout,
-                                             VkDevice                        device,
-                                             VkPipelineShaderStageCreateInfo computeStage) {
+void PipelineBuilder::build_compute_pipeline(VkPipeline& pipeline, VkPipelineLayout& layout, VkDevice device, VkPipelineShaderStageCreateInfo computeStage) {
 
     VkComputePipelineCreateInfo pipelineInfo = {};
     pipelineInfo.sType                       = VK_STRUCTURE_TYPE_COMPUTE_PIPELINE_CREATE_INFO;

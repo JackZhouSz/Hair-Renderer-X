@@ -130,6 +130,15 @@ void ForwardPass::setup_uniforms(std::vector<Graphics::Frame>& frames) {
     m_descriptorPool.set_layout(
         OBJECT_TEXTURE_LAYOUT, {textureBinding1, textureBinding2, textureBinding3, textureBinding4, textureBinding5, textureBinding6, textureBinding7});
 
+    // BINDLESS SETs
+    LayoutBinding bindlessVAOs(UNIFORM_STORAGE_BUFFER, SHADER_STAGE_VERTEX, 0, ENGINE_MAX_OBJECTS);
+    LayoutBinding bindlessIBOs(UNIFORM_STORAGE_BUFFER, SHADER_STAGE_VERTEX, 1, ENGINE_MAX_OBJECTS);
+    m_descriptorPool.set_layout(3,
+                                {bindlessVAOs, bindlessIBOs},
+                                0,
+                                {VK_DESCRIPTOR_BINDING_PARTIALLY_BOUND_BIT_EXT | VK_DESCRIPTOR_BINDING_VARIABLE_DESCRIPTOR_COUNT_BIT,
+                                 VK_DESCRIPTOR_BINDING_PARTIALLY_BOUND_BIT_EXT | VK_DESCRIPTOR_BINDING_VARIABLE_DESCRIPTOR_COUNT_BIT});
+
     for (size_t i = 0; i < frames.size(); i++)
     {
         // Global
@@ -174,6 +183,9 @@ void ForwardPass::setup_uniforms(std::vector<Graphics::Frame>& frames) {
             get_image(ResourceManager::FALLBACK_CUBEMAP), LAYOUT_SHADER_READ_ONLY_OPTIMAL, &m_descriptors[i].globalDescritor, 3);
         m_descriptorPool.set_descriptor_write(
             get_image(ResourceManager::FALLBACK_CUBEMAP), LAYOUT_SHADER_READ_ONLY_OPTIMAL, &m_descriptors[i].globalDescritor, 4);
+
+        // Bindless
+        m_descriptorPool.allocate_varaible_descriptor_set(3, &m_descriptors[i].bindlessDescriptor, ENGINE_MAX_OBJECTS);
     }
 }
 void ForwardPass::setup_shader_passes() {
@@ -230,17 +242,28 @@ void ForwardPass::setup_shader_passes() {
     hairStrandPass->graphicSettings.topology         = VK_PRIMITIVE_TOPOLOGY_LINE_LIST;
     m_shaderPasses[IMaterial::Type::HAIR_STR_TYPE]   = hairStrandPass;
 
+    // GraphicShaderPass* hairStrandPass2 =
+    //     new GraphicShaderPass(m_device->get_handle(), m_renderpass, m_imageExtent, ENGINE_RESOURCES_PATH "shaders/forward/hair_strand_epic.glsl");
+    // hairStrandPass2->settings.descriptorSetLayoutIDs = {{GLOBAL_LAYOUT, true}, {OBJECT_LAYOUT, true}, {OBJECT_TEXTURE_LAYOUT, true}};
+    // hairStrandPass2->settings.pushConstants          = {Graphics::PushConstant(SHADER_STAGE_FRAGMENT, sizeof(Vec4))};
+    // hairStrandPass2->graphicSettings.attributes      = {
+    //     {POSITION_ATTRIBUTE, true}, {NORMAL_ATTRIBUTE, false}, {UV_ATTRIBUTE, false}, {TANGENT_ATTRIBUTE, true}, {COLOR_ATTRIBUTE, true}};
+    // hairStrandPass2->graphicSettings.dynamicStates      = dynamicStates;
+    // hairStrandPass2->graphicSettings.samples            = samples;
+    // hairStrandPass2->graphicSettings.sampleShading      = false;
+    // hairStrandPass2->graphicSettings.blendAttachments   = blendAttachments;
+    // hairStrandPass2->graphicSettings.topology           = VK_PRIMITIVE_TOPOLOGY_LINE_LIST;
+    // m_shaderPasses[IMaterial::Type::HAIR_STR_EPIC_TYPE] = hairStrandPass2;
+
     GraphicShaderPass* hairStrandPass2 =
-        new GraphicShaderPass(m_device->get_handle(), m_renderpass, m_imageExtent, ENGINE_RESOURCES_PATH "shaders/forward/hair_strand_epic.glsl");
-    hairStrandPass2->settings.descriptorSetLayoutIDs = {{GLOBAL_LAYOUT, true}, {OBJECT_LAYOUT, true}, {OBJECT_TEXTURE_LAYOUT, true}};
-    hairStrandPass2->settings.pushConstants          = {Graphics::PushConstant(SHADER_STAGE_FRAGMENT, sizeof(Vec4))};
-    hairStrandPass2->graphicSettings.attributes      = {
-        {POSITION_ATTRIBUTE, true}, {NORMAL_ATTRIBUTE, false}, {UV_ATTRIBUTE, false}, {TANGENT_ATTRIBUTE, true}, {COLOR_ATTRIBUTE, true}};
+        new GraphicShaderPass(m_device->get_handle(), m_renderpass, m_imageExtent, ENGINE_RESOURCES_PATH "shaders/forward/fast_hair_strand_epic.glsl");
+    hairStrandPass2->settings.descriptorSetLayoutIDs    = {{0, true}, {1, true}, {2, true}, {3, true}};
+    hairStrandPass2->settings.pushConstants             = {Graphics::PushConstant(SHADER_STAGE_VERTEX | SHADER_STAGE_FRAGMENT, sizeof(Vec4))};
     hairStrandPass2->graphicSettings.dynamicStates      = dynamicStates;
     hairStrandPass2->graphicSettings.samples            = samples;
     hairStrandPass2->graphicSettings.sampleShading      = false;
     hairStrandPass2->graphicSettings.blendAttachments   = blendAttachments;
-    hairStrandPass2->graphicSettings.topology           = VK_PRIMITIVE_TOPOLOGY_LINE_LIST;
+    hairStrandPass2->graphicSettings.topology           = VK_PRIMITIVE_TOPOLOGY_TRIANGLE_STRIP;
     m_shaderPasses[IMaterial::Type::HAIR_STR_EPIC_TYPE] = hairStrandPass2;
 
     GraphicShaderPass* hairStrandPassDisney =
@@ -313,13 +336,6 @@ void ForwardPass::render(Graphics::Frame& currentFrame, Scene* const scene, uint
                         // Bind pipeline
                         cmd.bind_shaderpass(*shaderPass);
 
-                        if (mat->get_type() == IMaterial::Type::HAIR_STR_EPIC_TYPE)
-                        {
-                            float avgHairLength = g->get_properties().avgFiberLength * m->get_scale().x;
-                            Vec4  data          = Vec4(float(mesh_idx), avgHairLength, 0.0, 0.0);
-                            cmd.push_constants(*shaderPass, SHADER_STAGE_FRAGMENT, &data, sizeof(Vec4));
-                        }
-
                         // GLOBAL LAYOUT BINDING
                         cmd.bind_descriptor_set(m_descriptors[currentFrame.index].globalDescritor, 0, *shaderPass, {0, 0});
                         // PER OBJECT LAYOUT BINDING
@@ -329,7 +345,19 @@ void ForwardPass::render(Graphics::Frame& currentFrame, Scene* const scene, uint
                             cmd.bind_descriptor_set(mat->get_texture_descriptor(), 2, *shaderPass);
 
                         // DRAW
-                        cmd.draw_geometry(*get_VAO(g));
+                        if (mat->get_type() == IMaterial::Type::HAIR_STR_EPIC_TYPE)
+                        {
+                            // SSBO Bindless
+                            cmd.bind_descriptor_set(m_descriptors[currentFrame.index].bindlessDescriptor, 3, *shaderPass, {});
+
+                            uint32_t numSegments   = g->get_properties().vertexIndex.size() * 0.5;
+                            float    avgHairLength = g->get_properties().avgFiberLength * m->get_scale().x;
+                            Vec4     data          = Vec4(float(mesh_idx), float(numSegments), 0.1, avgHairLength);
+                            cmd.push_constants(*shaderPass, SHADER_STAGE_VERTEX | SHADER_STAGE_FRAGMENT, &data, sizeof(Vec4));
+
+                            cmd.draw_geometry(4, numSegments);
+                        } else
+                            cmd.draw_geometry(*get_VAO(g));
                     }
                 }
             }
@@ -366,6 +394,7 @@ void ForwardPass::render(Graphics::Frame& currentFrame, Scene* const scene, uint
 }
 
 void ForwardPass::update_uniforms(uint32_t frameIndex, Scene* const scene) {
+    uint32_t meshIdx = 0;
     for (Mesh* m : scene->get_meshes())
     {
         if (m)
@@ -375,8 +404,20 @@ void ForwardPass::update_uniforms(uint32_t frameIndex, Scene* const scene) {
                 Geometry*  g   = m->get_geometry(i);
                 IMaterial* mat = m->get_material(g->get_material_ID());
                 setup_material_descriptor(mat);
+
+                VAO* vao = get_VAO(g);
+                if (vao->loadedOnGPU)
+                {
+                    // Pos SSBO binding
+                    m_descriptorPool.set_descriptor_write(
+                        &vao->posSSBO, vao->posSSBO.size, 0, &m_descriptors[frameIndex].bindlessDescriptor, UNIFORM_STORAGE_BUFFER, 0, meshIdx);
+                    // IBO binding
+                    m_descriptorPool.set_descriptor_write(
+                        &vao->indexSSBO, vao->indexSSBO.size, 0, &m_descriptors[frameIndex].bindlessDescriptor, UNIFORM_STORAGE_BUFFER, 1, meshIdx);
+                }
             }
         }
+        meshIdx++;
     }
     if (!get_TLAS(scene)->binded)
     {

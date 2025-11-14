@@ -31,6 +31,7 @@ class ForwardPass : public GraphicPass
     struct FrameDescriptors {
         Graphics::DescriptorSet globalDescritor;
         Graphics::DescriptorSet objectDescritor;
+        Graphics::DescriptorSet bindlessDescriptor;
     };
     std::vector<FrameDescriptors> m_descriptors;
 

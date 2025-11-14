@@ -4,8 +4,7 @@ VULKAN_ENGINE_NAMESPACE_BEGIN
 
 namespace Graphics {
 
-ShaderStage
-ShaderSource::create_shader_stage(VkDevice device, VkShaderStageFlagBits stageType, const std::vector<uint32_t> code) {
+ShaderStage ShaderSource::create_shader_stage(VkDevice device, VkShaderStageFlagBits stageType, const std::vector<uint32_t>& code) {
     VkShaderModuleCreateInfo createInfo{};
     createInfo.sType    = VK_STRUCTURE_TYPE_SHADER_MODULE_CREATE_INFO;
     createInfo.codeSize = code.size() * sizeof(unsigned int);
@@ -82,10 +81,8 @@ ShaderSource ShaderSource::read_file(const std::string& filePath) {
     return {filePath, ss[0].str(), ss[1].str(), ss[2].str(), ss[3].str(), ss[4].str(), ss[5].str()};
 }
 
-std::vector<uint32_t> ShaderSource::compile_shader(const std::string          src,
-                                                   const std::string          shaderName,
-                                                   shaderc_shader_kind        kind,
-                                                   shaderc_optimization_level optimization) {
+std::vector<uint32_t>
+ShaderSource::compile_shader(const std::string src, const std::string shaderName, shaderc_shader_kind kind, shaderc_optimization_level optimization) {
     shaderc::Compiler       compiler;
     shaderc::CompileOptions options;
     options.SetTargetEnvironment(shaderc_target_env_vulkan, shaderc_env_version_vulkan_1_3);
@@ -96,7 +93,8 @@ std::vector<uint32_t> ShaderSource::compile_shader(const std::string          sr
     shaderc::SpvCompilationResult result = compiler.CompileGlslToSpv(src, kind, shaderName.c_str(), options);
     if (result.GetCompilationStatus() != shaderc_compilation_status_success)
     {
-        Logger::log(LogLevel::Error, Logger::format_with_tag("[Shader]", "\033[35m",  "Compile Error - " + result.GetErrorMessage()));
+       // std::cout << result.GetErrorMessage() + "\n";
+        Logger::log(LogLevel::Error, Logger::format_with_tag("[Shader]", "\033[35m", "Compile Error - " + result.GetErrorMessage()));
     }
 
     std::vector<uint32_t> spirv = {result.cbegin(), result.cend()};
@@ -111,46 +109,32 @@ void GraphicShaderPass::build_shader_stages(shaderc_optimization_level optimizat
 
     if (shader.vertSource != "")
     {
-        ShaderStage vertShaderStage = ShaderSource::create_shader_stage(
-            device,
-            VK_SHADER_STAGE_VERTEX_BIT,
-            ShaderSource::compile_shader(shader.vertSource, shader.name + "vert", shaderc_vertex_shader, optimization));
+        auto        byteCode        = ShaderSource::compile_shader(shader.vertSource, shader.name + "vert", shaderc_vertex_shader, optimization);
+        ShaderStage vertShaderStage = ShaderSource::create_shader_stage(device, VK_SHADER_STAGE_VERTEX_BIT, byteCode);
         shaderStages.push_back(vertShaderStage);
     }
     if (shader.fragSource != "")
     {
-        ShaderStage fragShaderStage = ShaderSource::create_shader_stage(
-            device,
-            VK_SHADER_STAGE_FRAGMENT_BIT,
-            ShaderSource::compile_shader(
-                shader.fragSource, shader.name + "frag", shaderc_fragment_shader, optimization));
+        auto        byteCode        = ShaderSource::compile_shader(shader.fragSource, shader.name + "frag", shaderc_fragment_shader, optimization);
+        ShaderStage fragShaderStage = ShaderSource::create_shader_stage(device, VK_SHADER_STAGE_FRAGMENT_BIT, byteCode);
         shaderStages.push_back(fragShaderStage);
     }
     if (shader.geomSource != "")
     {
-        ShaderStage geomShaderStage = ShaderSource::create_shader_stage(
-            device,
-            VK_SHADER_STAGE_GEOMETRY_BIT,
-            ShaderSource::compile_shader(
-                shader.geomSource, shader.name + "geom", shaderc_geometry_shader, optimization));
+        auto        byteCode        = ShaderSource::compile_shader(shader.geomSource, shader.name + "geom", shaderc_geometry_shader, optimization);
+        ShaderStage geomShaderStage = ShaderSource::create_shader_stage(device, VK_SHADER_STAGE_GEOMETRY_BIT, byteCode);
         shaderStages.push_back(geomShaderStage);
     }
     if (shader.tessControlSource != "")
     {
-        ShaderStage tessControlShaderStage = ShaderSource::create_shader_stage(
-            device,
-            VK_SHADER_STAGE_TESSELLATION_CONTROL_BIT,
-            ShaderSource::compile_shader(
-                shader.tessControlSource, shader.name + "control", shaderc_tess_control_shader, optimization));
+        auto        byteCode = ShaderSource::compile_shader(shader.tessControlSource, shader.name + "control", shaderc_tess_control_shader, optimization);
+        ShaderStage tessControlShaderStage = ShaderSource::create_shader_stage(device, VK_SHADER_STAGE_TESSELLATION_CONTROL_BIT, byteCode);
         shaderStages.push_back(tessControlShaderStage);
     }
     if (shader.tessEvalSource != "")
     {
-        ShaderStage tessEvalShaderStage = ShaderSource::create_shader_stage(
-            device,
-            VK_SHADER_STAGE_TESSELLATION_EVALUATION_BIT,
-            ShaderSource::compile_shader(
-                shader.tessEvalSource, shader.name + "eval", shaderc_tess_evaluation_shader, optimization));
+        auto        byteCode = ShaderSource::compile_shader(shader.tessEvalSource, shader.name + "eval", shaderc_tess_evaluation_shader, optimization);
+        ShaderStage tessEvalShaderStage = ShaderSource::create_shader_stage(device, VK_SHADER_STAGE_TESSELLATION_EVALUATION_BIT, byteCode);
         shaderStages.push_back(tessEvalShaderStage);
     }
 }
@@ -161,11 +145,8 @@ void ComputeShaderPass::build_shader_stages(shaderc_optimization_level optimizat
 
     if (shader.computeSource != "")
     {
-        computeStage = ShaderSource::create_shader_stage(
-            device,
-            VK_SHADER_STAGE_COMPUTE_BIT,
-            ShaderSource::compile_shader(
-                shader.computeSource, shader.name + "compute", shaderc_compute_shader, optimization));
+        auto byteCode = ShaderSource::compile_shader(shader.computeSource, shader.name + "compute", shaderc_compute_shader, optimization);
+        computeStage  = ShaderSource::create_shader_stage(device, VK_SHADER_STAGE_COMPUTE_BIT, byteCode);
     }
 }
 
@@ -177,18 +158,14 @@ void GraphicShaderPass::build(DescriptorPool& descriptorManager) {
     {
         stages.push_back(Init::pipeline_shader_stage_create_info(stage.stage, stage.shaderModule));
     }
-    PipelineBuilder::build_graphic_pipeline(
-        pipeline, pipelineLayout, device, renderpass->handle, extent, graphicSettings, stages);
+    PipelineBuilder::build_graphic_pipeline(pipeline, pipelineLayout, device, renderpass->handle, extent, graphicSettings, stages);
 }
 void ComputeShaderPass::build(DescriptorPool& descriptorManager) {
 
     PipelineBuilder::build_pipeline_layout(pipelineLayout, device, descriptorManager, settings);
 
     PipelineBuilder::build_compute_pipeline(
-        pipeline,
-        pipelineLayout,
-        device,
-        Init::pipeline_shader_stage_create_info(computeStage.stage, computeStage.shaderModule));
+        pipeline, pipelineLayout, device, Init::pipeline_shader_stage_create_info(computeStage.stage, computeStage.shaderModule));
 }
 void GraphicShaderPass::cleanup() {
 

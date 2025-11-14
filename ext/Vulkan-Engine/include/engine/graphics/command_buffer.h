@@ -44,6 +44,7 @@ struct CommandBuffer {
     void begin_renderpass(RenderPass& renderpass, Framebuffer& fbo, VkSubpassContents subpassContents = VK_SUBPASS_CONTENTS_INLINE);
     void end_renderpass(RenderPass& renderpass, Framebuffer& fbo);
     void draw_geometry(VertexArrays& vao, uint32_t instanceCount = 1, uint32_t firstOcurrence = 0, int32_t offset = 0, uint32_t firstInstance = 0);
+    void draw_geometry(uint32_t vertexCount, uint32_t instanceCount = 1, uint32_t firstOcurrence = 0, int32_t offset = 0, uint32_t firstInstance = 0);
     void draw_gui_data();
     void bind_shaderpass(ShaderPass& pass);
     void bind_descriptor_set(DescriptorSet         descriptor,
@@ -75,10 +76,10 @@ struct CommandBuffer {
                           PipelineStage srcStage  = STAGE_COLOR_ATTACHMENT_OUTPUT,
                           PipelineStage dstStage  = STAGE_FRAGMENT_SHADER);
     void pipeline_barrier(Buffer&       buffer,
-                          AccessFlags   srcMask   = ACCESS_TRANSFER_WRITE,
-                          AccessFlags   dstMask   = ACCESS_SHADER_READ,
-                          PipelineStage srcStage  = STAGE_TRANSFER,
-                          PipelineStage dstStage  = STAGE_FRAGMENT_SHADER);
+                          AccessFlags   srcMask  = ACCESS_TRANSFER_WRITE,
+                          AccessFlags   dstMask  = ACCESS_SHADER_READ,
+                          PipelineStage srcStage = STAGE_TRANSFER,
+                          PipelineStage dstStage = STAGE_FRAGMENT_SHADER);
 
     void clear_image(Image& img, ImageLayout layout, ImageAspect aspect = ASPECT_COLOR, Vec4 clearColor = Vec4(0.0f, 0.0f, 0.0f, 1.0f));
 
