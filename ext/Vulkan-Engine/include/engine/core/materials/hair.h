@@ -234,6 +234,22 @@ class HairMaterial : public IMaterial
 class HairEpicMaterial : public IMaterial
 {
   protected:
+    // Pigment concentrations
+    float m_eumelanine   = 1.3f;
+    float m_pheomelanine = 0.2f;
+    Vec3  m_sigma_a;
+    bool m_usePigmentation = false;
+
+    inline void compute_sigma_a() {
+
+        Vec3 eumelaninSigmaA   = {0.419f, 0.697f, 1.37f};
+        Vec3 pheomelaninSigmaA = {0.187f, 0.4f, 1.05f};
+
+        m_sigma_a.r = m_eumelanine * eumelaninSigmaA.r + m_pheomelanine * pheomelaninSigmaA.r;
+        m_sigma_a.g = m_eumelanine * eumelaninSigmaA.g + m_pheomelanine * pheomelaninSigmaA.g;
+        m_sigma_a.b = m_eumelanine * eumelaninSigmaA.b + m_pheomelanine * pheomelaninSigmaA.b;
+    }
+
     Vec3 m_baseColor = {0.27f, 0.14f, 0.04f};
 
     float m_thickness = 0.003f;
@@ -448,6 +464,34 @@ class HairEpicMaterial : public IMaterial
     Mesh* get_skull() {
         return m_skull;
     };
+
+    inline float get_eumelanine() const {
+        return m_eumelanine;
+    }
+    inline void set_eumelanine(float c) {
+        if (!m_usePigmentation)
+            return;
+        m_eumelanine = c;
+        compute_sigma_a();
+        m_isDirty = true;
+    }
+    inline float get_pheomelanine() const {
+        return m_pheomelanine;
+    }
+    inline void set_pheomelanine(float c) {
+        if (!m_usePigmentation)
+            return;
+        compute_sigma_a();
+        m_pheomelanine = c;
+        m_isDirty      = true;
+    }
+     inline void use_pigmentation(bool op) {
+        m_usePigmentation = op;
+    }
+    inline bool use_pigmentation() {
+        return m_usePigmentation;
+        m_isDirty = true;
+    }
 };
 
 } // namespace Core

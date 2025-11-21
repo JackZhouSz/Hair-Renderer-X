@@ -112,7 +112,7 @@ void HairVoxelizationPass::setup_uniforms(std::vector<Graphics::Frame>& frames) 
 
     // //////////////////////////////////////
 
-    m_descriptorPool = m_device->create_descriptor_pool(ENGINE_MAX_OBJECTS, ENGINE_MAX_OBJECTS, ENGINE_MAX_OBJECTS, ENGINE_MAX_OBJECTS, ENGINE_MAX_OBJECTS);
+    m_descriptorPool = m_device->create_descriptor_pool(ENGINE_MAX_OBJECTS, ENGINE_MAX_OBJECTS, ENGINE_MAX_OBJECTS, ENGINE_MAX_OBJECTS*3, ENGINE_MAX_OBJECTS);
     m_descriptors.resize(frames.size());
 
     // GLOBAL SET
@@ -320,8 +320,8 @@ void HairVoxelizationPass::render(Graphics::Frame& currentFrame, Scene* const sc
                             cmd.bind_descriptor_set(m_descriptors[currentFrame.index].bufferDescritor, 2, *shPass, {}, BINDING_TYPE_COMPUTE);
                             
                             uint32_t numSegments   = m->get_geometry()->get_properties().vertexIndex.size() * 0.5;
-                            float    avgHairLength = m->get_geometry()->get_properties().avgFiberLength * m->get_scale().x;
-                            Vec4     data          = Vec4(float(mesh_idx), float(numSegments), avgHairLength, 0.0);
+                            float fiberThickness = static_cast<HairEpicMaterial*>(mat)->get_thickness();
+                            Vec4     data          = Vec4(float(mesh_idx), float(numSegments), fiberThickness, 0.0);
                             cmd.push_constants(*shPass, SHADER_STAGE_COMPUTE, &data, sizeof(Vec4));
                             
                             // Dispatch

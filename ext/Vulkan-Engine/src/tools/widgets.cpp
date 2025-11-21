@@ -646,11 +646,37 @@ void ObjectExplorerWidget::render() {
             if (model->get_material(i)->get_type() == IMaterial::Type::HAIR_STR_EPIC_TYPE)
             {
                 HairEpicMaterial* mat = static_cast<HairEpicMaterial*>(model->get_material(i));
-                // ImGui UI code
-                Vec3 baseColor = mat->get_base_color();
-                if (ImGui::ColorEdit3("Base Color", (float*)&baseColor))
+
+                bool usePigments = mat->use_pigmentation();
+                if (ImGui::Checkbox("Use pigments", &usePigments))
                 {
-                    mat->set_base_color(baseColor);
+                    mat->use_pigmentation(usePigments);
+                }
+                if (usePigments)
+                {
+                    float eu = mat->get_eumelanine();
+                    if (ImGui::DragFloat("Eumelanine", &eu, 0.01f, 0.0f, 2.0f))
+                    {
+                        mat->set_eumelanine(eu);
+                    }
+                    float ph = mat->get_pheomelanine();
+                    if (ImGui::DragFloat("Pheomelanine", &ph, 0.01f, 0.0f, 2.0f))
+                    {
+                        mat->set_pheomelanine(ph);
+                    }
+                } else
+                {
+                    // Vec3 sigma = mat->get_absorption();
+                    // if (ImGui::DragFloat3("Sigma A", (float*)&sigma, 0.1, 0.0, 2.0))
+                    // {
+                    //     mat->set_absoption(sigma);
+                    // };
+                    // ImGui UI code
+                    Vec3 baseColor = mat->get_base_color();
+                    if (ImGui::ColorEdit3("Base Color", (float*)&baseColor))
+                    {
+                        mat->set_base_color(baseColor);
+                    }
                 }
 
                 float thickness = mat->get_thickness();
@@ -702,7 +728,7 @@ void ObjectExplorerWidget::render() {
                 float spec = mat->get_specular();
                 if (ImGui::DragFloat("Specular", &spec, 0.01f, 0.0f, 1.0f))
                 {
-                    mat->set_specular(spec); // Update 
+                    mat->set_specular(spec); // Update
                 }
                 float met = mat->get_metallic();
                 if (ImGui::DragFloat("Metallic", &met, 0.01f, 0.0f, 1.0f))
@@ -741,12 +767,12 @@ void ObjectExplorerWidget::render() {
                 bool leg = mat->useLegacyAbsorption();
                 if (ImGui::Checkbox("Use Legacy Absorption", &leg))
                 {
-                    mat->setUseLegacyAbsorption(leg); 
+                    mat->setUseLegacyAbsorption(leg);
                 }
                 bool backLit = mat->useBacklit();
                 if (ImGui::Checkbox("Use BackLit", &backLit))
                 {
-                    mat->setUseBacklit(backLit); 
+                    mat->setUseBacklit(backLit);
                 }
                 bool clamB = mat->clampBSDFValue();
                 if (ImGui::Checkbox("Calmp BSDF Value", &clamB))

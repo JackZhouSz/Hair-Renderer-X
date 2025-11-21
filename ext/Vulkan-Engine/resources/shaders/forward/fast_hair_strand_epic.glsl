@@ -17,7 +17,7 @@ layout(push_constant) uniform ObjectConstants {
     float numSegments;
     float thickness;
     float avgFiberLength;
-}constants;
+} constants;
 
 // Output
 layout(location = 0) out vec3 _pos;
@@ -26,56 +26,74 @@ layout(location = 2) out vec2 _uv;
 layout(location = 3) out vec3 _dir;
 layout(location = 4) out vec3 _modelDir;
 
-void main() {
+// helpers
+vec3 safeNormalize(vec3 v, vec3 fallback) {
+    float l = length(v);
+    return (l > 1e-6) ? (v / l) : fallback;
+}
+vec3 safePerp(vec3 a, vec3 b) {
+    vec3 r = cross(a, b);
+    if (length(r) < 1e-6) {
+        // choose any vector not parallel to a
+        vec3 alt = abs(a.x) < 0.9 ? vec3(1,0,0) : vec3(0,1,0);
+        r = cross(a, alt);
+        if (length(r) < 1e-6) r = vec3(1,0,0);
+    }
+    return normalize(r);
+}
 
+void main() {
     uint segmentId = gl_InstanceIndex;
     uint meshId    = nonuniformEXT(uint(constants.id));
-    uint base      = segmentId * 2;
+    uint base      = segmentId * 2u;
 
-    uint index0 = indexBuffer[meshId].index[base];
-    uint index1 = indexBuffer[meshId].index[base + 1];
-    // Safe p2: if last segment, just reuse p1
-    uint index2 = indexBuffer[meshId].index[min(base + 2, base + 1)];
+    // bounds-safety: avoid reading out-of-range if segmentId too large
+    // (assume caller ensures instanceCount = numSegments)
+    uint idx0 = indexBuffer[meshId].index[base];
+    uint idx1 = indexBuffer[meshId].index[base + 1u];
+    uint idx2 = indexBuffer[meshId].index[min(base + 2u, base + 1u)];
 
-    vec3 p0 = (object.model * vertexBuffer[meshId].pos[index0]).xyz;
-    vec3 p1 = (object.model * vertexBuffer[meshId].pos[index1]).xyz;
-    vec3 p2 = (object.model * vertexBuffer[meshId].pos[index2]).xyz;
+    vec3 p0 = (object.model * vertexBuffer[meshId].pos[idx0]).xyz;
+    vec3 p1 = (object.model * vertexBuffer[meshId].pos[idx1]).xyz;
+    vec3 p2 = (object.model * vertexBuffer[meshId].pos[idx2]).xyz;
 
-    vec3 view0 = normalize(camera.position.xyz - p0);
-    vec3 view1 = normalize(camera.position.xyz - p1);
+    vec3 view0 = safeNormalize(camera.position.xyz - p0, vec3(0.0,0.0,1.0));
+    vec3 view1 = safeNormalize(camera.position.xyz - p1, vec3(0.0,0.0,1.0));
 
-    vec3 dir0 = normalize(p1 - p0);
-    vec3 dir1 = normalize(p2 - p1);
+    vec3 rawDir0 = p1 - p0;
+    vec3 rawDir1 = p2 - p1;
 
-    vec3 right0 = normalize(cross(dir0, view0));
-    vec3 right1 = normalize(cross(dir1, view1));
+    vec3 dir0 = safeNormalize(rawDir0, vec3(0.0,0.0,1.0));
+    // if dir1 is degenerate fallback to dir0
+    vec3 dir1 = safeNormalize(rawDir1, dir0);
 
-    // Which vertex of the quad?
-    // v0 = left0, v1 = right0
-    // v2 = left1, v3 = right1
-    int v = gl_VertexIndex & 3; // 0–3
+    // compute billboard right vectors (stable)
+    vec3 right0 = safePerp(dir0, view0);
+    vec3 right1 = safePerp(dir1, view1);
 
+    // choose vertex within the quad (0..3)
+    int v = int(gl_VertexIndex & 3);
     bool isStart = (v < 2);
     bool isRight = (v == 1 || v == 3);
 
-    if (isStart)
-    {
+    if (isStart) {
         _modelPos = p0 + right0 * (isRight ? constants.thickness : -constants.thickness);
         _modelDir = dir0;
-    } else
-    {
+    } else {
         _modelPos = p1 + right1 * (isRight ? constants.thickness : -constants.thickness);
-        _modelDir = dir0;
+        _modelDir = dir1; 
     }
 
-    _dir = normalize((camera.view * vec4(_modelDir, 0.0)).xyz);
+    // transform dir into view space safely
+    _dir = safeNormalize((camera.view * vec4(_modelDir, 0.0)).xyz, vec3(0.0,0.0,1.0));
 
     vec4 viewPos = camera.view * vec4(_modelPos, 1.0);
-    _pos         = viewPos.xyz;
-    _uv          = vec2(float(isRight), float(!isStart));
+    _pos = viewPos.xyz;
+    _uv  = vec2(float(isRight), float(!isStart));
 
     gl_Position = camera.viewProj * vec4(_modelPos, 1.0);
 }
+
 
 #shader fragment
 #version 460 core

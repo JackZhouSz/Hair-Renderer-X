@@ -2,7 +2,6 @@
 #version 460 core
 #include object.glsl
 
-
 // Input
 layout(location = 0) in vec3 position;
 layout(location = 1) in vec3 normal;
@@ -15,8 +14,6 @@ layout(location = 0) out vec3 v_color;
 layout(location = 1) out vec3 v_tangent;
 
 void main() {
-
-
 
     gl_Position = object.model * vec4(position, 1.0);
 
@@ -127,17 +124,16 @@ layout(location = 8) in vec3 g_origin;
 layout(set = 0, binding = 2) uniform sampler2DArray shadowMap;
 layout(set = 0, binding = 4) uniform samplerCube irradianceMap;
 
+layout(set = 0, binding = 7) uniform sampler3D NpTex;
 layout(set = 0, binding = 9) uniform sampler3D hairVoxelsSh;
 layout(set = 0, binding = 13) uniform sampler3D hairVoxelsDensity;
 layout(set = 0, binding = 12) uniform sampler3D hairLUT;
 
-
-layout(push_constant) Data {
+layout(push_constant) uniform Data {
     float id;
-    float numSegments;
-    float thickness;
     float avgFiberLength;
-} data;
+}
+data;
 
 layout(set = 1, binding = 1) uniform MaterialUniforms {
     vec3  baseColor;
@@ -212,104 +208,107 @@ float getOpticalDensity(vec3 worldPos, vec3 lightWorldPos) {
 // Special shadow mapping for hair for controlling density
 //////////////////////////////////////////////////////////////////////////
 
-float computeHairShadowCone(vec3 worldPos, vec3 lightDir)
-{
+float computeHairShadowCone(vec3 worldPos, vec3 lightDir) {
     vec3 boundsMin = object.minCoord.xyz;
     vec3 boundsMax = object.maxCoord.xyz;
     vec3 boxSize   = boundsMax - boundsMin;
 
     vec3 texPos = (worldPos - boundsMin) / boxSize;
 
-    float t = 0.001;
-    float tMax = 1.0;               
-    float sigma = 0.7;
+    float t         = 0.001;
+    float tMax      = 1.0;
+    float sigma     = 0.7;
     float coneAngle = 0.02;
-    float trans = 1.0;
+    float trans     = 1.0;
 
-    const int MAX_STEPS = 64;       // drastically fewer now
-    float step = 1.0 / 256.0;       // start near one voxel
+    const int MAX_STEPS = 64;          // drastically fewer now
+    float     step      = 1.0 / 256.0; // start near one voxel
 
     for (int i = 0; i < MAX_STEPS && trans > 0.001; i++)
     {
         float radius = coneAngle * t;
-        float mip = clamp(log2(max(radius * 256.0, 1e-4)), 0.0, 3.0);
+        float mip    = clamp(log2(max(radius * 256.0, 1e-4)), 0.0, 3.0);
 
-        vec3 samplePos = texPos + lightDir * t;
-        float dens = textureLod(hairVoxelsDensity, samplePos, mip).r;
+        vec3  samplePos = texPos + lightDir * t;
+        float dens      = textureLod(hairVoxelsDensity, samplePos, mip).r;
 
         // exponential attenuation
         trans *= exp(-dens * sigma * step * 256.0);
 
         // exponential step growth
         t += step;
-        step *= 1.05;  
+        step *= 1.05;
 
-        if (t > tMax) break;
+        if (t > tMax)
+            break;
     }
 
     return trans;
 }
 
-float computeHairShadowDDA(vec3 worldPos, vec3 lightDir)
-{
+float computeHairShadowDDA(vec3 worldPos, vec3 lightDir) {
     vec3 boundsMin = object.minCoord.xyz;
     vec3 boundsMax = object.maxCoord.xyz;
 
-    ivec3 dim = textureSize(hairVoxelsDensity, 0);
-    vec3 gridSize = vec3(dim);
-    vec3 invBounds = 1.0 / (boundsMax - boundsMin);
+    ivec3 dim       = textureSize(hairVoxelsDensity, 0);
+    vec3  gridSize  = vec3(dim);
+    vec3  invBounds = 1.0 / (boundsMax - boundsMin);
 
     // Convert world → voxel coords
-    vec3 startV = (worldPos - boundsMin) * invBounds * gridSize;
+    vec3 startV  = (worldPos - boundsMin) * invBounds * gridSize;
     vec3 rayDirV = normalize(lightDir) * gridSize * 0.5; // scaled voxel ray step
 
     // Compute DDA parameters
     ivec3 voxel = ivec3(floor(startV));
-    ivec3 step = ivec3(sign(rayDirV));
+    ivec3 step  = ivec3(sign(rayDirV));
 
     vec3 tMax;
     vec3 tDelta = abs(1.0 / rayDirV);
 
     for (int axis = 0; axis < 3; axis++)
     {
-        float nextBoundary = (step[axis] > 0)
-            ? (float(voxel[axis] + 1) - startV[axis])
-            : (startV[axis] - float(voxel[axis]));
+        float nextBoundary = (step[axis] > 0) ? (float(voxel[axis] + 1) - startV[axis]) : (startV[axis] - float(voxel[axis]));
 
         tMax[axis] = nextBoundary * tDelta[axis];
     }
 
-    float accum = 0.0;
-    int maxSteps = 256; // cheap! this is shadow, not SH baking
+    float accum    = 0.0;
+    int   maxSteps = 256; // cheap! this is shadow, not SH baking
 
     for (int i = 0; i < maxSteps; i++)
     {
-        if (voxel.x < 0 || voxel.y < 0 || voxel.z < 0 ||
-            voxel.x >= dim.x || voxel.y >= dim.y || voxel.z >= dim.z)
+        if (voxel.x < 0 || voxel.y < 0 || voxel.z < 0 || voxel.x >= dim.x || voxel.y >= dim.y || voxel.z >= dim.z)
             break;
 
         // float d = texelFetch(hairVoxelsDensity, voxel, 0).r;
 
-        vec3 worldV = (vec3(voxel) + 0.5) / gridSize;
-        float d = textureLod(hairVoxelsDensity, worldV,0.0).r;
+        vec3  worldV = (vec3(voxel) + 0.5) / gridSize;
+        float d      = textureLod(hairVoxelsDensity, worldV, 0.0).r;
         // if(i>0)
         accum += d;
 
         // Step voxel
         if (tMax.x < tMax.y)
         {
-            if (tMax.x < tMax.z) {
-                voxel.x += step.x; tMax.x += tDelta.x;
-            } else {
-                voxel.z += step.z; tMax.z += tDelta.z;
+            if (tMax.x < tMax.z)
+            {
+                voxel.x += step.x;
+                tMax.x += tDelta.x;
+            } else
+            {
+                voxel.z += step.z;
+                tMax.z += tDelta.z;
             }
-        }
-        else
+        } else
         {
-            if (tMax.y < tMax.z) {
-                voxel.y += step.y; tMax.y += tDelta.y;
-            } else {
-                voxel.z += step.z; tMax.z += tDelta.z;
+            if (tMax.y < tMax.z)
+            {
+                voxel.y += step.y;
+                tMax.y += tDelta.y;
+            } else
+            {
+                voxel.z += step.z;
+                tMax.z += tDelta.z;
             }
         }
     }
@@ -422,9 +421,9 @@ void main() {
 
             // Number of traversed strands
             HairTransmittanceMask transMask;
-            float                 rawCount = getOpticalDensity(g_modelPos, (camera.invView * vec4(scene.lights[i].position, 1.0)).xyz) / max(data.avgFiberLength, 1e-9);
+            float rawCount = getOpticalDensity(g_modelPos, (camera.invView * vec4(scene.lights[i].position, 1.0)).xyz) / max(data.avgFiberLength, 1e-9);
             rawCount *= material.densityBoost;
-#define USE_AMANATIDES_WOO_DDA 1
+#define USE_AMANATIDES_WOO_DDA 0
 #if USE_AMANATIDES_WOO_DDA
             // Much weaker perceptual curve now
             float k       = 0.6; // instead of 2.0
@@ -438,28 +437,32 @@ void main() {
 #endif
             transMask.hairCount = hSmooth;
 
+            // transMask.visibility = directFraction < 0.9 ? 0.0: 1.0;
             transMask.visibility = directFraction;
-            transMask.visibility = 1.0;
+            // transMask.hairCount = 100000.0f;
+            // transMask.visibility = 1.0;
 
-            if(material.advShadows > 0.0){
+            if (material.advShadows > 0.0)
+            {
                 float sigma = 0.5; // tweak ~0.3–1.2 depending on density scale
-                // transMask.visibility = exp(-sigma * computeHairShadowDDA(g_modelPos, normalize((camera.invView * vec4(scene.lights[i].position, 1.0)).xyz -g_modelPos)));
-                transMask.visibility = computeHairShadowCone(g_modelPos, normalize((camera.invView * vec4(scene.lights[i].position, 1.0)).xyz -g_modelPos));
-                
+                // transMask.visibility =  computeHairShadowDDA(g_modelPos, normalize((camera.invView * vec4(scene.lights[i].position, 1.0)).xyz -g_modelPos)) >
+                // 0.0 ? ;
+                transMask.visibility = computeHairShadowCone(g_modelPos, normalize((camera.invView * vec4(scene.lights[i].position, 1.0)).xyz - g_modelPos));
             }
 
             bsdf          = evalHairMultipleScattering(V, L, T, transMask, hairLUT, bsdf);
-            vec3 lighting = evalEpicHairBSDF(L,
-                                             V,
-                                             T,
-                                             directFraction,
-                                             bsdf,
-                                             inBacklit,
-                                             scene.lights[i].area,
-                                             material.r > 0.5,
-                                             material.tt > 0.5,
-                                             material.trt > 0.5,
-                                             material.scatter > 0.5) *
+            vec3 lighting = evalHairBSDF(L,
+                                         V,
+                                         T,
+                                         directFraction,
+                                         NpTex,
+                                         bsdf,
+                                         inBacklit,
+                                         scene.lights[i].area,
+                                         material.r > 0.5,
+                                         material.tt > 0.5,
+                                         material.trt > 0.5,
+                                         material.scatter > 0.5) *
                             scene.lights[i].color * scene.lights[i].intensity;
 
             color += lighting;

@@ -1,4 +1,7 @@
+#include <engine/core/materials/hair.h>
 #include <engine/core/passes/forward_pass.h>
+
+#define FAST_HAIR_GEOMETRY 0
 
 VULKAN_ENGINE_NAMESPACE_BEGIN
 using namespace Graphics;
@@ -82,7 +85,7 @@ void ForwardPass::setup_attachments(std::vector<Graphics::AttachmentInfo>& attac
 }
 void ForwardPass::setup_uniforms(std::vector<Graphics::Frame>& frames) {
 
-    m_descriptorPool = m_device->create_descriptor_pool(ENGINE_MAX_OBJECTS, ENGINE_MAX_OBJECTS, ENGINE_MAX_OBJECTS, ENGINE_MAX_OBJECTS, ENGINE_MAX_OBJECTS);
+    m_descriptorPool = m_device->create_descriptor_pool(ENGINE_MAX_OBJECTS, ENGINE_MAX_OBJECTS, ENGINE_MAX_OBJECTS, ENGINE_MAX_OBJECTS * 3, ENGINE_MAX_OBJECTS);
     m_descriptors.resize(frames.size());
 
     // GLOBAL SET
@@ -241,20 +244,7 @@ void ForwardPass::setup_shader_passes() {
     hairStrandPass->graphicSettings.sampleShading    = false;
     hairStrandPass->graphicSettings.topology         = VK_PRIMITIVE_TOPOLOGY_LINE_LIST;
     m_shaderPasses[IMaterial::Type::HAIR_STR_TYPE]   = hairStrandPass;
-
-    // GraphicShaderPass* hairStrandPass2 =
-    //     new GraphicShaderPass(m_device->get_handle(), m_renderpass, m_imageExtent, ENGINE_RESOURCES_PATH "shaders/forward/hair_strand_epic.glsl");
-    // hairStrandPass2->settings.descriptorSetLayoutIDs = {{GLOBAL_LAYOUT, true}, {OBJECT_LAYOUT, true}, {OBJECT_TEXTURE_LAYOUT, true}};
-    // hairStrandPass2->settings.pushConstants          = {Graphics::PushConstant(SHADER_STAGE_FRAGMENT, sizeof(Vec4))};
-    // hairStrandPass2->graphicSettings.attributes      = {
-    //     {POSITION_ATTRIBUTE, true}, {NORMAL_ATTRIBUTE, false}, {UV_ATTRIBUTE, false}, {TANGENT_ATTRIBUTE, true}, {COLOR_ATTRIBUTE, true}};
-    // hairStrandPass2->graphicSettings.dynamicStates      = dynamicStates;
-    // hairStrandPass2->graphicSettings.samples            = samples;
-    // hairStrandPass2->graphicSettings.sampleShading      = false;
-    // hairStrandPass2->graphicSettings.blendAttachments   = blendAttachments;
-    // hairStrandPass2->graphicSettings.topology           = VK_PRIMITIVE_TOPOLOGY_LINE_LIST;
-    // m_shaderPasses[IMaterial::Type::HAIR_STR_EPIC_TYPE] = hairStrandPass2;
-
+#if FAST_HAIR_GEOMETRY == 1
     GraphicShaderPass* hairStrandPass2 =
         new GraphicShaderPass(m_device->get_handle(), m_renderpass, m_imageExtent, ENGINE_RESOURCES_PATH "shaders/forward/fast_hair_strand_epic.glsl");
     hairStrandPass2->settings.descriptorSetLayoutIDs    = {{0, true}, {1, true}, {2, true}, {3, true}};
@@ -265,7 +255,21 @@ void ForwardPass::setup_shader_passes() {
     hairStrandPass2->graphicSettings.blendAttachments   = blendAttachments;
     hairStrandPass2->graphicSettings.topology           = VK_PRIMITIVE_TOPOLOGY_TRIANGLE_STRIP;
     m_shaderPasses[IMaterial::Type::HAIR_STR_EPIC_TYPE] = hairStrandPass2;
+#else
+    GraphicShaderPass* hairStrandPass2 =
+        new GraphicShaderPass(m_device->get_handle(), m_renderpass, m_imageExtent, ENGINE_RESOURCES_PATH "shaders/forward/hair_strand_epic.glsl");
+    hairStrandPass2->settings.descriptorSetLayoutIDs = {{GLOBAL_LAYOUT, true}, {OBJECT_LAYOUT, true}, {OBJECT_TEXTURE_LAYOUT, true}};
+    hairStrandPass2->settings.pushConstants          = {Graphics::PushConstant(SHADER_STAGE_FRAGMENT, sizeof(Vec4))};
+    hairStrandPass2->graphicSettings.attributes      = {
+        {POSITION_ATTRIBUTE, true}, {NORMAL_ATTRIBUTE, false}, {UV_ATTRIBUTE, false}, {TANGENT_ATTRIBUTE, true}, {COLOR_ATTRIBUTE, true}};
+    hairStrandPass2->graphicSettings.dynamicStates      = dynamicStates;
+    hairStrandPass2->graphicSettings.samples            = samples;
+    hairStrandPass2->graphicSettings.sampleShading      = false;
+    hairStrandPass2->graphicSettings.blendAttachments   = blendAttachments;
+    hairStrandPass2->graphicSettings.topology           = VK_PRIMITIVE_TOPOLOGY_LINE_LIST;
+    m_shaderPasses[IMaterial::Type::HAIR_STR_EPIC_TYPE] = hairStrandPass2;
 
+#endif
     GraphicShaderPass* hairStrandPassDisney =
         new GraphicShaderPass(m_device->get_handle(), m_renderpass, m_imageExtent, ENGINE_RESOURCES_PATH "shaders/forward/hair_strand_disney.glsl");
     hairStrandPassDisney->settings.descriptorSetLayoutIDs = {{GLOBAL_LAYOUT, true}, {OBJECT_LAYOUT, true}, {OBJECT_TEXTURE_LAYOUT, true}};
@@ -344,6 +348,7 @@ void ForwardPass::render(Graphics::Frame& currentFrame, Scene* const scene, uint
                         if (shaderPass->settings.descriptorSetLayoutIDs[OBJECT_TEXTURE_LAYOUT])
                             cmd.bind_descriptor_set(mat->get_texture_descriptor(), 2, *shaderPass);
 
+#if FAST_HAIR_GEOMETRY == 1
                         // DRAW
                         if (mat->get_type() == IMaterial::Type::HAIR_STR_EPIC_TYPE)
                         {
@@ -352,12 +357,24 @@ void ForwardPass::render(Graphics::Frame& currentFrame, Scene* const scene, uint
 
                             uint32_t numSegments   = g->get_properties().vertexIndex.size() * 0.5;
                             float    avgHairLength = g->get_properties().avgFiberLength * m->get_scale().x;
-                            Vec4     data          = Vec4(float(mesh_idx), float(numSegments), 0.1, avgHairLength);
+                            Vec4     data = Vec4(float(mesh_idx), float(numSegments), static_cast<HairEpicMaterial*>(mat)->get_thickness(), avgHairLength);
                             cmd.push_constants(*shaderPass, SHADER_STAGE_VERTEX | SHADER_STAGE_FRAGMENT, &data, sizeof(Vec4));
 
                             cmd.draw_geometry(4, numSegments);
                         } else
                             cmd.draw_geometry(*get_VAO(g));
+
+#else
+
+                        if (mat->get_type() == IMaterial::Type::HAIR_STR_EPIC_TYPE)
+                        {
+                            float avgHairLength = g->get_properties().avgFiberLength * m->get_scale().x;
+                            Vec4  data          = Vec4(float(mesh_idx), avgHairLength, 0.0, 0.0);
+                            cmd.push_constants(*shaderPass, SHADER_STAGE_FRAGMENT, &data, sizeof(Vec4));
+                        }
+
+                        cmd.draw_geometry(*get_VAO(g));
+#endif
                     }
                 }
             }

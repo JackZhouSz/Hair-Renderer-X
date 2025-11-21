@@ -7,35 +7,38 @@
 //////////////////////////////////////////////////////////////////////////////////////////////////////
 #extension GL_EXT_nonuniform_qualifier : require
 #extension GL_EXT_shader_atomic_float : require
-#include object.glsl  
+#include object.glsl
 #include utils.glsl
 
 #define USE_SPLAT_KERNEL 1
 
 layout(local_size_x = 32, local_size_y = 1, local_size_z = 1) in;
 
-
-layout(push_constant) uniform ObjectID {
+layout(push_constant) uniform ObjectData {
     float meshID;
     float numSegments;
-} objectID;
+    float thickness;
+}objectData;
 
 // Output voxel grid
-layout(set = 0, binding = 2, r32f) uniform image3D voxelLengthImage;
+layout(set = 0, binding = 2, r32f) uniform image3D voxelImage;
 
 // Bindless Buffers
 layout(std430, set = 2, binding = 0) readonly buffer PosBuffer {
     vec4 pos[];
-} posBuffers[];
+}
+posBuffers[];
 layout(std430, set = 2, binding = 1) readonly buffer IndexBuffer {
     uint indices[];
-} indexBuffers[];
+}
+indexBuffers[];
 
 void main() {
 
-    uint meshID = nonuniformEXT(uint(objectID.meshID));   // which mesh in the bindless buffers
-    uint segID  = gl_GlobalInvocationID.x;  // segment index = index pair
-    if(segID >= uint(objectID.numSegments)) return;
+    uint meshID = nonuniformEXT(uint(objectData.meshID)); // which mesh in the bindless buffers
+    uint segID  = gl_GlobalInvocationID.x;                // segment index = index pair
+    if (segID >= uint(objectData.numSegments))
+        return;
 
     uint i0 = indexBuffers[nonuniformEXT(meshID)].indices[segID * 2u + 0u];
     uint i1 = indexBuffers[nonuniformEXT(meshID)].indices[segID * 2u + 1u];
@@ -47,133 +50,153 @@ void main() {
     float segLenWorld = max(1e-9, length(p1 - p0));
 
     // Map to voxel-space [0, gridSize)
-    ivec3 gridSize = imageSize(voxelLengthImage);
-    vec3 a = mapToZeroOne(p0, object.minCoord.xyz, object.maxCoord.xyz) * vec3(gridSize);
-    vec3 b = mapToZeroOne(p1, object.minCoord.xyz, object.maxCoord.xyz) * vec3(gridSize);
-    a = clamp(a, vec3(0.0), vec3(gridSize - 1));
-    b = clamp(b, vec3(0.0), vec3(gridSize - 1));
+    ivec3 gridSize = imageSize(voxelImage);
+    vec3  a        = mapToZeroOne(p0, object.minCoord.xyz, object.maxCoord.xyz) * vec3(gridSize);
+    vec3  b        = mapToZeroOne(p1, object.minCoord.xyz, object.maxCoord.xyz) * vec3(gridSize);
+    a              = clamp(a, vec3(0.0), vec3(gridSize - 1));
+    b              = clamp(b, vec3(0.0), vec3(gridSize - 1));
 
-//// Amanatides & Woo DDA for Optical Density
-//////////////////////////////////////////////////////////////////////////////////////////////////////
-    
+    //// Amanatides & Woo DDA for Optical Density
+    //////////////////////////////////////////////////////////////////////////////////////////////////////
+
     // DDA setup (robust against zero components)
-    ivec3 voxel = ivec3(floor(a));
+    ivec3 voxel    = ivec3(floor(a));
     ivec3 endVoxel = ivec3(floor(b));
-    vec3 rayDir = b - a;
-   
+    vec3  rayDir   = b - a;
+
     vec3 direction = b - a;
-    vec3 dir = direction;        
-    vec3 step = sign(direction);
+    vec3 dir       = direction;
+    vec3 step      = sign(direction);
     // compute tMax and tDelta robustly:
     // For each axis:
     // if dir>0: tMax = ( (floor(a)+1) - a ) / dir
     // else:     tMax = ( a - floor(a) ) / -dir
     // tDelta = 1 / abs(dir)
     const float INF = 1e30;
-    vec3 tMax;
-    vec3 tDelta;
+    vec3        tMax;
+    vec3        tDelta;
     // Delta X
-    if (abs(dir.x) < 1e-12) {
-        tMax.x = INF;
+    if (abs(dir.x) < 1e-12)
+    {
+        tMax.x   = INF;
         tDelta.x = INF;
-    } else {
+    } else
+    {
         if (dir.x > 0.0)
-            tMax.x = ( (float(voxel.x) + 1.0) - a.x ) / dir.x;
+            tMax.x = ((float(voxel.x) + 1.0) - a.x) / dir.x;
         else
-            tMax.x = ( a.x - float(voxel.x) ) / (-dir.x);
+            tMax.x = (a.x - float(voxel.x)) / (-dir.x);
         tDelta.x = 1.0 / abs(dir.x);
     }
     // Delta Y
-    if (abs(dir.y) < 1e-12) {
-        tMax.y = INF;
+    if (abs(dir.y) < 1e-12)
+    {
+        tMax.y   = INF;
         tDelta.y = INF;
-    } else {
+    } else
+    {
         if (dir.y > 0.0)
-            tMax.y = ( (float(voxel.y) + 1.0) - a.y ) / dir.y;
+            tMax.y = ((float(voxel.y) + 1.0) - a.y) / dir.y;
         else
-            tMax.y = ( a.y - float(voxel.y) ) / (-dir.y);
+            tMax.y = (a.y - float(voxel.y)) / (-dir.y);
         tDelta.y = 1.0 / abs(dir.y);
     }
     // Delta Z
-    if (abs(dir.z) < 1e-12) {
-        tMax.z = INF;
+    if (abs(dir.z) < 1e-12)
+    {
+        tMax.z   = INF;
         tDelta.z = INF;
-    } else {
+    } else
+    {
         if (dir.z > 0.0)
-            tMax.z = ( (float(voxel.z) + 1.0) - a.z ) / dir.z;
+            tMax.z = ((float(voxel.z) + 1.0) - a.z) / dir.z;
         else
-            tMax.z = ( a.z - float(voxel.z) ) / (-dir.z);
+            tMax.z = (a.z - float(voxel.z)) / (-dir.z);
         tDelta.z = 1.0 / abs(dir.z);
     }
 
-
-
     int maxSteps = int(max(gridSize.x, max(gridSize.y, gridSize.z)));
 
-   
     float totalLength = length(b - a);
-    if (totalLength <= 1e-12) return;
+    if (totalLength <= 1e-12)
+        return;
+
+    float       voxelSize    = abs(object.maxCoord.xyz - object.minCoord.xyz).x / gridSize.x;
+    const float VOXEL_VOLUME = pow(voxelSize, 3.0);
+    float       radius       = objectData.thickness * 0.5;
+    const float PI = 3.14159265359;
 
     float t = 0.0;
-    for (int s = 0; s < maxSteps; ++s) {
+    for (int s = 0; s < maxSteps; ++s)
+    {
 
-        float nextT = min(tMax.x, min(tMax.y, tMax.z));
+        float nextT    = min(tMax.x, min(tMax.y, tMax.z));
         float segParam = max(0.0, nextT - t); // param fraction in voxel-space
 
         // convert param fraction to world-length
-        float lenInVoxel = segLenWorld * segParam ;
+        float lenInVoxel = segLenWorld * segParam;
+
+        float fiberVolume     = lenInVoxel * (PI * radius * radius);
+        float normVoxelVolume = (fiberVolume / VOXEL_VOLUME);
 
 #if USE_SPLAT_KERNEL == 1
         // TRILINEAR SPLATTING
         //------------------------------------------------------------
-        vec3 pos = a + (t + segParam * 0.5) * (b - a); // midpoint of segment slice
+        vec3 pos  = a + (t + segParam * 0.5) * (b - a); // midpoint of segment slice
         vec3 vpos = clamp(pos, vec3(0.0), vec3(gridSize - 1));
 
         ivec3 base = ivec3(floor(vpos));
-        vec3 frac = vpos - vec3(base);
+        vec3  frac = vpos - vec3(base);
 
         for (int dz = 0; dz <= 1; ++dz)
-        for (int dy = 0; dy <= 1; ++dy)
-        for (int dx = 0; dx <= 1; ++dx)
-        {
-            ivec3 c = base + ivec3(dx, dy, dz);
-            if (any(lessThan(c, ivec3(0))) || any(greaterThanEqual(c, gridSize))) continue;
+            for (int dy = 0; dy <= 1; ++dy)
+                for (int dx = 0; dx <= 1; ++dx)
+                {
+                    ivec3 c = base + ivec3(dx, dy, dz);
+                    if (any(lessThan(c, ivec3(0))) || any(greaterThanEqual(c, gridSize)))
+                        continue;
 
-            float wx = dx == 0 ? (1.0 - frac.x) : frac.x;
-            float wy = dy == 0 ? (1.0 - frac.y) : frac.y;
-            float wz = dz == 0 ? (1.0 - frac.z) : frac.z;
+                    float wx = dx == 0 ? (1.0 - frac.x) : frac.x;
+                    float wy = dy == 0 ? (1.0 - frac.y) : frac.y;
+                    float wz = dz == 0 ? (1.0 - frac.z) : frac.z;
 
-            float w = wx * wy * wz; // trilinear weight
+                    float w = wx * wy * wz; // trilinear weight
 
-            imageAtomicAdd(voxelLengthImage, c, lenInVoxel * w);
-        }
+                    imageAtomicAdd(voxelImage, c, normVoxelVolume * w);
+                }
 
 #else
 
-        imageAtomicAdd(voxelLengthImage, clamp(voxel, ivec3(0), gridSize - 1), lenInVoxel);
+        imageAtomicAdd(voxelImage, clamp(voxel, ivec3(0), gridSize - 1), normVoxelVolume);
 #endif
 
-        if (all(equal(voxel, endVoxel))) break;
+        if (all(equal(voxel, endVoxel)))
+            break;
 
         // step the axis with smallest tMax
-        if (tMax.x < tMax.y) {
-            if (tMax.x < tMax.z) {
+        if (tMax.x < tMax.y)
+        {
+            if (tMax.x < tMax.z)
+            {
                 voxel.x += int(step.x);
                 tMax.x += tDelta.x;
-            } else {
+            } else
+            {
                 voxel.z += int(step.z);
                 tMax.z += tDelta.z;
             }
-        } else {
-            if (tMax.y < tMax.z) {  
+        } else
+        {
+            if (tMax.y < tMax.z)
+            {
                 voxel.y += int(step.y);
                 tMax.y += tDelta.y;
-            } else {
+            } else
+            {
                 voxel.z += int(step.z);
                 tMax.z += tDelta.z;
             }
         }
         t = nextT;
     }
-
 }

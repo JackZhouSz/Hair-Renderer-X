@@ -312,7 +312,6 @@ vec3 evalHairBSDF(
     //(cos between 0 and 1)
     vec3 Dp = texture(DpTex, vec3(phi * ONE_OVER_PI, cos(thD),azBeta)).rgb;
 
-
     float aR = fresnel(bsdf.ior, sqrt(0.5 + 0.5 * dot(wi, wr)));
     vec3 nR = vec3(aR * Dp.x);
 

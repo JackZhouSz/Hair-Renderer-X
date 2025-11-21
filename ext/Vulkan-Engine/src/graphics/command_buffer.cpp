@@ -152,6 +152,7 @@ void CommandBuffer::draw_geometry(VertexArrays& vao, uint32_t instanceCount, uin
     {
         vkCmdDraw(handle, vao.vertexCount, instanceCount, firstOcurrence, firstInstance);
     }
+
 }
 void CommandBuffer::draw_geometry(uint32_t vertexCount, uint32_t instanceCount, uint32_t firstOcurrence, int32_t offset, uint32_t firstInstance) {
     PROFILING_EVENT()
